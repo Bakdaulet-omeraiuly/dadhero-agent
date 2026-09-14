@@ -1,0 +1,779 @@
+openapi: 3.1.0
+info:
+  title: DadHero API
+  version: "1.0.0"
+  description: >
+    REST API for DadHero -- a personalized family Story Universe agent.
+    Design-only artifact (see design-notes.md); no server implements this
+    yet. All resources are scoped to the authenticated family via
+    Supabase Auth; family_id never appears in a URL or request body.
+  license:
+    name: MIT
+servers:
+  - url: https://api.dadhero.app/v1
+    description: Production (planned)
+  - url: http://localhost:8000/v1
+    description: Local dev (planned FastAPI server)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: characters
+  - name: places
+  - name: stories
+  - name: pages
+  - name: memories
+  - name: progress-updates
+  - name: conversations
+  - name: health
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      security: []
+      tags: [health]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /me/characters:
+    get:
+      operationId: listCharacters
+      summary: List this family's saved characters
+      tags: [characters]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CharacterList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createCharacter
+      summary: Save a character, from a text description or an adult's reference photo
+      description: >
+        `source: "text"` builds appearance from `appearance_text`.
+        `source: "photo"` stylizes an uploaded photo into a reference
+        portrait -- refused server-side with 422 if `relationship`
+        indicates a minor (see design-notes.md; a real child's photo must
+        never become a character's likeness).
+      tags: [characters]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateCharacterRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCharacterRequest"
+      responses:
+        "201":
+          description: Character created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Character" }
+        "422":
+          description: Refused (e.g. photo source with a minor relationship)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /me/characters/{character_id}:
+    parameters:
+      - $ref: "#/components/parameters/CharacterId"
+    get:
+      operationId: getCharacter
+      summary: Get one character
+      tags: [characters]
+      responses:
+        "200":
+          description: The character
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Character" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateCharacter
+      summary: Update a character's traits (not its locked appearance/prompt_fragment)
+      tags: [characters]
+      parameters:
+        - name: If-Match
+          in: header
+          schema: { type: string }
+          description: ETag from a prior GET, for optimistic concurrency.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCharacterRequest" }
+      responses:
+        "200":
+          description: Updated character
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Character" }
+        "409":
+          description: ETag mismatch -- character was modified elsewhere
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCharacter
+      summary: Delete a character
+      tags: [characters]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /me/places:
+    get:
+      operationId: listPlaces
+      summary: List saved places
+      tags: [places]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of places
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceList" }
+    post:
+      operationId: createPlace
+      summary: Save a recurring place
+      tags: [places]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlaceRequest" }
+      responses:
+        "201":
+          description: Place created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Place" }
+
+  /me/places/{place_id}:
+    parameters:
+      - name: place_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getPlace
+      tags: [places]
+      responses:
+        "200":
+          description: The place
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Place" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updatePlace
+      tags: [places]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlaceRequest" }
+      responses:
+        "200":
+          description: Updated place
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Place" }
+    delete:
+      operationId: deletePlace
+      tags: [places]
+      responses:
+        "204": { description: Deleted }
+
+  /me/stories:
+    get:
+      operationId: listStories
+      summary: List this family's stories
+      tags: [stories]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { type: string, enum: [draft, finished] }
+      responses:
+        "200":
+          description: A page of stories
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryList" }
+    post:
+      operationId: createStory
+      summary: Start a new story (draft)
+      tags: [stories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateStoryRequest" }
+      responses:
+        "201":
+          description: Draft story created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+
+  /me/stories/{story_id}:
+    parameters:
+      - $ref: "#/components/parameters/StoryId"
+    get:
+      operationId: getStory
+      tags: [stories]
+      responses:
+        "200":
+          description: The story
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateStory
+      summary: Update story metadata, or finish it (status -> finished, optionally set goal)
+      tags: [stories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateStoryRequest" }
+      responses:
+        "200":
+          description: Updated story
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteStory
+      tags: [stories]
+      responses:
+        "204": { description: Deleted }
+
+  /me/stories/{story_id}/pages:
+    parameters:
+      - $ref: "#/components/parameters/StoryId"
+    get:
+      operationId: listPages
+      summary: List a story's pages, in order
+      tags: [pages]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of pages
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageList" }
+    post:
+      operationId: createPage
+      summary: Generate one story page
+      description: >
+        Server-side, atomically: check_story_fact for every declared fact,
+        check_page_safety on the narration text, then generate_page_image
+        (conditioned on the story's first page for visual consistency).
+        A client cannot reach image generation without these checks --
+        they are not separately exposed.
+      tags: [pages]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePageRequest" }
+      responses:
+        "201":
+          description: Page generated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "409":
+          description: A declared fact conflicts with an earlier page (continuity)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Narration failed the age-appropriateness screen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /me/stories/{story_id}/pages/{page_number}:
+    parameters:
+      - $ref: "#/components/parameters/StoryId"
+      - name: page_number
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      operationId: getPage
+      tags: [pages]
+      responses:
+        "200":
+          description: The page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: regeneratePage
+      summary: Regenerate this page (e.g. after parent feedback)
+      tags: [pages]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePageRequest" }
+      responses:
+        "200":
+          description: Page regenerated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+
+  /me/memories:
+    get:
+      operationId: listMemories
+      tags: [memories]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of memories
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemoryList" }
+    post:
+      operationId: createMemory
+      summary: Record a real family memory/event
+      tags: [memories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMemoryRequest" }
+      responses:
+        "201":
+          description: Memory recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Memory" }
+
+  /me/memories/{memory_id}:
+    parameters:
+      - name: memory_id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      operationId: linkMemoryToStory
+      summary: Link a memory to the story made from it
+      tags: [memories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [used_in_story_id]
+              properties:
+                used_in_story_id: { type: string }
+      responses:
+        "200":
+          description: Updated memory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Memory" }
+
+  /me/progress-updates:
+    get:
+      operationId: listProgressUpdates
+      tags: [progress-updates]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: related_to
+          in: query
+          schema: { type: string }
+          description: Filter by character name or goal.
+      responses:
+        "200":
+          description: A page of progress updates
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProgressUpdateList" }
+    post:
+      operationId: createProgressUpdate
+      summary: Record a parent's follow-up report on a goal-oriented story
+      tags: [progress-updates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProgressUpdateRequest" }
+      responses:
+        "201":
+          description: Progress recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProgressUpdate" }
+
+  /me/conversations/{conversation_id}/messages:
+    parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema: { type: string }
+        description: Client-generated UUID identifying one chat thread.
+    get:
+      operationId: listMessages
+      summary: List a conversation's message history
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of messages
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageList" }
+    post:
+      operationId: sendMessage
+      summary: Send a parent message; runs one full agent turn and returns the reply
+      description: >
+        Wraps the Strands agent loop end-to-end -- intent understanding,
+        character/story tool calls, continuity and safety checks, image
+        generation. May take several seconds; see design-notes.md's
+        "Not designed here" note on adding progress streaming.
+      tags: [conversations]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateMessageRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageRequest"
+      responses:
+        "201":
+          description: Agent's reply
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Message" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase Auth session JWT. family_id is derived from this token's subject, never accepted from the client.
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+      description: Opaque pagination cursor from a previous response's next_cursor.
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string }
+      description: Client-generated key. Retrying the same key returns the original result instead of billing/generating twice.
+    CharacterId:
+      name: character_id
+      in: path
+      required: true
+      schema: { type: string }
+    StoryId:
+      name: story_id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid auth token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found (or not owned by the authenticated family)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: minor_photo_refused }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+
+    PageInfo:
+      type: object
+      required: [next_cursor, has_more]
+      properties:
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
+
+    Character:
+      type: object
+      required: [id, character_name, relationship, prompt_fragment, created_at]
+      properties:
+        id: { type: string }
+        character_name: { type: string }
+        relationship: { type: string, example: dad }
+        appearance_text: { type: [string, "null"] }
+        personality_traits: { type: array, items: { type: string } }
+        role_in_story: { type: string }
+        reference_image_url: { type: [string, "null"], format: uri }
+        prompt_fragment: { type: string, description: "Locked description reused verbatim on every generated page." }
+        created_at: { type: string, format: date-time }
+
+    CharacterList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Character" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreateCharacterRequest:
+      type: object
+      required: [character_name, relationship, source]
+      properties:
+        character_name: { type: string }
+        relationship: { type: string, example: mom }
+        source: { type: string, enum: [text, photo] }
+        appearance_text:
+          type: string
+          description: Required when source=text. Hair, signature clothing/accessory, one distinguishing feature.
+        photo:
+          type: string
+          format: binary
+          description: Required when source=photo. An adult's reference photo only -- refused for a minor relationship.
+        personality_traits: { type: array, items: { type: string } }
+        role_in_story: { type: string, example: astronaut }
+
+    UpdateCharacterRequest:
+      type: object
+      properties:
+        personality_traits: { type: array, items: { type: string } }
+        role_in_story: { type: string }
+
+    Place:
+      type: object
+      required: [id, place_name, description, created_at]
+      properties:
+        id: { type: string }
+        place_name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+
+    PlaceList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Place" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreatePlaceRequest:
+      type: object
+      required: [place_name, description]
+      properties:
+        place_name: { type: string }
+        description: { type: string }
+
+    Story:
+      type: object
+      required: [id, title, status, template_key, created_at]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        idea: { type: string }
+        template_key: { type: string, enum: [problem_helper_solution, small_adventure, bedtime_wind_down] }
+        goal: { type: [string, "null"], example: "confidence at school" }
+        status: { type: string, enum: [draft, finished] }
+        character_id: { type: string }
+        page_count: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    StoryList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Story" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreateStoryRequest:
+      type: object
+      required: [title, idea, template_key, character_id]
+      properties:
+        title: { type: string }
+        idea: { type: string }
+        template_key: { type: string, enum: [problem_helper_solution, small_adventure, bedtime_wind_down] }
+        character_id: { type: string }
+        goal: { type: string }
+
+    UpdateStoryRequest:
+      type: object
+      properties:
+        status: { type: string, enum: [finished] }
+        goal: { type: string }
+        title: { type: string }
+
+    Page:
+      type: object
+      required: [story_id, page_number, scene_description, caption_text, image_url, created_at]
+      properties:
+        story_id: { type: string }
+        page_number: { type: integer }
+        scene_description: { type: string }
+        caption_text: { type: string }
+        image_url: { type: string, format: uri }
+        is_placeholder: { type: boolean, description: "True when generated by the mock image provider." }
+        created_at: { type: string, format: date-time }
+
+    PageList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Page" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreatePageRequest:
+      type: object
+      required: [scene_description, caption_text]
+      properties:
+        scene_description: { type: string }
+        caption_text: { type: string, description: "Rendered into the artwork as a comic caption/speech bubble." }
+        facts:
+          type: object
+          additionalProperties: { type: string }
+          description: "Concrete details this page relies on, checked for continuity against earlier pages (e.g. {\"backpack_color\": \"red\"})."
+
+    Memory:
+      type: object
+      required: [id, text, created_at]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        used_in_story_id: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    MemoryList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Memory" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreateMemoryRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+
+    ProgressUpdate:
+      type: object
+      required: [id, related_to, update_text, created_at]
+      properties:
+        id: { type: string }
+        related_to: { type: string, description: "Character name or goal this update relates to." }
+        update_text: { type: string }
+        story_id: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    ProgressUpdateList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ProgressUpdate" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreateProgressUpdateRequest:
+      type: object
+      required: [related_to, update_text]
+      properties:
+        related_to: { type: string }
+        update_text: { type: string }
+        story_id: { type: string }
+
+    Message:
+      type: object
+      required: [id, role, content, created_at]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [parent, assistant] }
+        content: { type: string, description: "Markdown; assistant replies may embed image_url references to generated pages." }
+        tool_calls: { type: array, items: { type: string }, description: "Names of tools the agent called this turn, for UI transparency." }
+        created_at: { type: string, format: date-time }
+
+    MessageList:
+      type: object
+      required: [data, page_info]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Message" } }
+        page_info: { $ref: "#/components/schemas/PageInfo" }
+
+    CreateMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+        attachment:
+          type: string
+          format: binary
+          description: Optional photo (adult reference) or drawing (any subject) attachment.

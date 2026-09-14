@@ -25,6 +25,23 @@ Not installed (evaluated, not relevant to this project): senior-brainstorm
 (architecture was already decided in-session), telegram-bot-builder
 (DadHero isn't a Telegram bot).
 
+## REST API design (docs/api/)
+
+`docs/api/design-notes.md` + `docs/api/openapi.yaml` (valid OpenAPI 3.1,
+checked with `openapi-spec-validator`) -- the REST API for the
+platform-with-cabinet rebuild below, designed using the `mcp-api-build`
+skill's domain-model -> resource-inventory -> OpenAPI process (Google
+AIP / Stripe conventions). Design only, no server implements it yet.
+Despite that skill's name, no MCP server was built or is planned here --
+confirmed with the project owner this is REST-only.
+
+Key calls: resources live under `/v1/me/...` (family id comes from the
+Supabase JWT, never the URL); a conversational
+`POST /me/conversations/{id}/messages` wraps a full agent turn for the
+chat UI, alongside plain CRUD resources (characters/stories/pages/etc.)
+for a dashboard/gallery view; `check_story_fact`/`check_page_safety` stay
+internal (folded into `POST .../pages`), never public endpoints.
+
 ## Planned rebuild (platform-with-cabinet format, not yet started)
 
 Per the vibe-coder-stack lesson's classification, a production version of

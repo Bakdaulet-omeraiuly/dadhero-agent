@@ -372,6 +372,15 @@ Reset family memory / generated images between demo runs:
 > on every page, and remembers -- across sessions -- the character, the
 > goal, and whether it actually helped.
 
+## Beyond the hackathon: REST API design
+
+`docs/api/` has a designed (not implemented) REST API for a future
+platform-with-cabinet rebuild -- `openapi.yaml` (valid OpenAPI 3.1) plus
+`design-notes.md` explaining the domain model and every non-obvious
+choice (why `/v1/me/...` instead of a family id in the URL, why page
+creation is one atomic endpoint instead of exposing the internal
+continuity/safety checks, idempotency on the paid-generation calls, etc).
+
 ## Credit
 
 The child-safety reframe (adult-hero-by-default, later refined to
