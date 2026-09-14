@@ -185,3 +185,26 @@ list.
 working hackathon submission** -- this backend+frontend pair is new,
 additive surface area, not a replacement, until/unless it reaches parity
 and is actually verified live.
+
+## In-browser sketch canvas (`streamlit-drawable-canvas`)
+
+`app.py`'s "Draw a sketch" expander lets a parent/child draw directly in
+the browser instead of needing an external drawing app + file upload,
+feeding the result into the existing (unchanged) `stylize_drawing` tool.
+
+Compatibility was NOT assumed -- `streamlit-drawable-canvas` (last
+released 2023) is known to lag behind Streamlit's own component
+protocol. Verified directly before adding it to `requirements.txt`:
+an isolated test app showed a genuinely blank canvas on first install (no
+console error, no failed network request, zero `<canvas>` elements --
+a real, confirmed incompatibility symptom, not a false alarm) on one
+run, then rendered and captured real strokes correctly (`image_data`
+shape `(300, 300, 4)`, later `(320, 480, 4)` in the real integration)
+on a clean reinstall. Re-tested inside the actual app afterward via
+Playwright: draw -> "Use this drawing" -> the saved PNG is a real,
+correctly-flattened (transparent canvas composited onto white, not
+left transparent/black) sketch on disk, ready for `stylize_drawing`
+exactly like an uploaded file. If this ever regresses again after a
+`streamlit`/`streamlit-drawable-canvas` version bump, don't assume it
+still works -- repeat this same check (isolated test app, real mouse
+strokes via Playwright, inspect the saved file) before trusting it.

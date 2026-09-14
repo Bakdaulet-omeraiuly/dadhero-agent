@@ -22,6 +22,7 @@ import uuid
 from pathlib import Path
 
 import streamlit as st
+from streamlit_drawable_canvas import st_canvas
 
 from dadhero import memory_backend as memory
 from dadhero.agent import build_agent
@@ -354,6 +355,25 @@ def save_uploaded_file(uploaded_file) -> str:
     return str(dest)
 
 
+def save_canvas_drawing(image_data) -> str:
+    """Same idea as save_uploaded_file, for a sketch drawn right in the
+    browser (st_canvas's RGBA numpy array) instead of an uploaded file --
+    goes through the exact same stylize_drawing path afterward, so a
+    drawn sketch and an uploaded scan of one are handled identically."""
+    from PIL import Image
+
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    dest = _UPLOAD_DIR / f"{uuid.uuid4().hex}.png"
+    # st_canvas gives RGBA with a transparent background where nothing was
+    # drawn -- flatten onto white first, or stylize_drawing's provider
+    # would see a checkerboard/black background instead of blank paper.
+    img = Image.fromarray(image_data.astype("uint8"), "RGBA")
+    flattened = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    flattened.paste(img, mask=img)
+    flattened.convert("RGB").save(dest)
+    return str(dest)
+
+
 def _img_tag(path: str) -> str:
     data = base64.b64encode(Path(path).read_bytes()).decode("ascii")
     ext = Path(path).suffix.lstrip(".") or "png"
@@ -439,6 +459,7 @@ with st.sidebar:
         st.session_state.agent = build_agent()
         st.session_state.history = []
         st.session_state.pending_plan = None
+        st.session_state.pending_drawing_path = None
         st.rerun()
 
     provider = os.environ.get("DADHERO_IMAGE_PROVIDER", "mock")
@@ -623,6 +644,32 @@ if st.session_state.history and st.session_state.history[-1][0] == "assistant":
     if st.button("🔮 Continue this adventure", key="continue_adventure"):
         quick_start_text = "Continue this adventure -- write the next chapter in the same Story Universe, for the same hero."
 
+with st.expander("✏️ Draw a sketch (instead of uploading a photo)", expanded=False):
+    st.caption(
+        "For the child's own drawing brought to life -- draw it right here, no "
+        "scanner/photo needed. Safe for any subject, including the child "
+        "themselves (see the safety note above: this is NOT a photo likeness)."
+    )
+    canvas_result = st_canvas(
+        stroke_width=6,
+        stroke_color="#2E241A",
+        background_color="#FFFFFF",
+        height=320,
+        width=480,
+        drawing_mode="freedraw",
+        return_image_data=True,
+        key="drawing_canvas",
+    )
+    if st.button("Use this drawing", key="use_drawing"):
+        if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
+            st.session_state.pending_drawing_path = save_canvas_drawing(canvas_result.image_data)
+            st.success("Saved -- it'll attach to your next message below.")
+        else:
+            st.warning("The canvas is empty -- draw something first.")
+
+if st.session_state.get("pending_drawing_path"):
+    st.caption(f"📎 Drawing ready to attach: {Path(st.session_state.pending_drawing_path).name}")
+
 chat_value = st.chat_input(
     "Describe your idea, or attach a photo/drawing...",
     accept_file=True,
@@ -642,6 +689,12 @@ if chat_value or quick_start_text:
             display_text = "(see attached file)"
     else:
         user_text = display_text = quick_start_text
+
+    if st.session_state.get("pending_drawing_path"):
+        drawing_path = st.session_state.pending_drawing_path
+        user_text += f"\n\n[Uploaded file: {drawing_path}]"
+        display_text += f"\n\n![attached drawing]({drawing_path})"
+        st.session_state.pending_drawing_path = None
 
     st.session_state.history.append(("user", display_text))
     with st.chat_message("user", avatar="🙂"):
