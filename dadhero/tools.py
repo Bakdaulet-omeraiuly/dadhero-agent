@@ -63,7 +63,15 @@ def save_character(
         "art_style": bible.art_style,
         "prompt_fragment": bible.prompt_fragment(),
     }
-    memory.save_character(family_id, character_name, record)
+    stored = memory.save_character(family_id, character_name, record)
+    # The Supabase backend's row has an `id` the local-JSON backend's
+    # bible dict doesn't (there, characters are keyed by name, not id) --
+    # pass it through when present so a caller with a real row (e.g.
+    # backend/routers/characters.py's dashboard-triggered create) can use
+    # it as CreateStoryRequest.character_id. Purely additive: the agent
+    # itself never reads this key.
+    if isinstance(stored, dict) and "id" in stored:
+        record["id"] = stored["id"]
     return record
 
 
@@ -155,7 +163,11 @@ def save_character_from_photo(
         "reference_image_path": result.path,
         "image_url": image_url,
     }
-    memory.save_character(family_id, character_name, record)
+    stored = memory.save_character(family_id, character_name, record)
+    # See save_character's matching comment -- passes the Supabase row's
+    # `id` through when present; a no-op extra key everywhere else.
+    if isinstance(stored, dict) and "id" in stored:
+        record["id"] = stored["id"]
     return record
 
 
