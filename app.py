@@ -13,6 +13,7 @@ image as a base64-embedded, framed "comic panel" <img>, in order.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -95,9 +96,37 @@ st.markdown(
     .dh-hero h1 { margin: 0; font-size: 30px; font-weight: 800; }
     .dh-hero p { margin: 2px 0 0; color: var(--ink-soft); font-size: 15px; font-weight: 600; }
 
-    /* Sidebar */
-    [data-testid="stSidebar"] { background: var(--card); border-right: 2px solid var(--border); }
-    [data-testid="stSidebar"] h3 { font-size: 17px !important; margin-top: 6px; }
+    /* Sidebar -- deliberately dark regardless of the main page's light/dark
+       theme (a docs-style nav rail, not just the storybook card color),
+       the same ink-dark palette already defined above for dark mode,
+       hardcoded here so it doesn't flip with the OS setting. */
+    [data-testid="stSidebar"] {
+        background: #211A12 !important;
+        border-right: 2px solid #40331F !important;
+    }
+    [data-testid="stSidebar"] * { color: #F3EAD9; }
+    [data-testid="stSidebar"] h3 {
+        font-size: 15px !important; margin-top: 18px !important;
+        text-transform: uppercase; letter-spacing: .04em;
+        color: #F3936A !important; font-family: 'Baloo 2', sans-serif !important;
+    }
+    [data-testid="stSidebar"] hr { border-color: #40331F !important; }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] small { color: #B9AA90 !important; }
+    [data-testid="stSidebar"] [data-testid="stAlert"] {
+        background: #2A2216 !important; border: 1px solid #40331F !important; border-radius: 12px;
+    }
+    [data-testid="stSidebar"] [data-testid="stCodeBlock"] pre,
+    [data-testid="stSidebar"] code {
+        background: #2A2216 !important; color: #F3936A !important;
+        border: 1px solid #40331F !important; border-radius: 10px !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        border-color: #F3936A !important; color: #F3936A !important; background: transparent !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: #F3936A !important; color: #241A10 !important;
+    }
 
     /* Chat bubbles */
     [data-testid="stChatMessage"] {
@@ -144,10 +173,103 @@ st.markdown(
         box-shadow: 3px 3px 0 var(--accent2); background: var(--card);
     }
     .dh-gallery-card img { display: block; width: 100%; }
+
+    /* Workshop panel -- live trace of the agent's tool calls while a
+       story is being made, styled like the API Design tab's Redoc
+       sidebar (chevron rows, hover highlight, accordion) since that's
+       the exact look asked for: real steps, not a generic spinner. */
+    .dh-workshop-label {
+        font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 13px;
+        letter-spacing: .04em; text-transform: uppercase; color: var(--accent2);
+        margin: 2px 2px 6px;
+    }
+    [data-testid="stExpander"] {
+        border: 2px solid var(--border) !important; border-radius: 12px !important;
+        background: var(--card) !important; margin-bottom: 6px !important;
+        box-shadow: 0 2px 6px var(--shadow);
+    }
+    [data-testid="stExpander"] summary {
+        font-family: 'Baloo 2', sans-serif !important; font-weight: 700 !important;
+        font-size: 14px !important;
+    }
+    [data-testid="stExpander"] summary:hover { background: var(--paper) !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+_TOOL_LABELS: dict[str, tuple[str, str]] = {
+    "get_family_memory": ("🧠", "Reading this family's Story Universe"),
+    "get_saved_character": ("🔎", "Looking up a saved character"),
+    "save_character": ("📇", "Writing the Character Bible"),
+    "save_character_from_photo": ("📸", "Stylizing the reference photo"),
+    "stylize_drawing": ("✏️", "Bringing the drawing to life"),
+    "save_place": ("🏞️", "Saving a recurring place"),
+    "record_family_memory": ("💭", "Recording a real family memory"),
+    "record_progress": ("📈", "Recording a progress update"),
+    "check_story_fact": ("🧩", "Checking story continuity"),
+    "check_page_safety": ("🛡️", "Screening a page for age-appropriateness"),
+    "generate_page_image": ("🖼️", "Illustrating a page"),
+    "record_finished_story": ("✅", "Recording the finished story"),
+}
+
+
+def _tool_label(name: str) -> tuple[str, str]:
+    return _TOOL_LABELS.get(name, ("⚙️", name))
+
+
+def render_workshop(steps: list[dict]) -> None:
+    """One expander per tool call, in order -- the running step stays open,
+    finished ones collapse to a checkmark, expandable to see exactly what
+    the agent passed in (and got back, once available)."""
+    if not steps:
+        return
+    st.markdown('<div class="dh-workshop-label">🔨 Workshop</div>', unsafe_allow_html=True)
+    for i, step in enumerate(steps):
+        icon, label = _tool_label(step["name"])
+        running = step["status"] == "running"
+        badge = "⏳" if running else "✅"
+        with st.expander(f"{icon} {label} {badge}", expanded=running and i == len(steps) - 1):
+            if step.get("input"):
+                st.json(step["input"], expanded=False)
+            elif running:
+                st.caption("Working...")
+            if step.get("output") and not (isinstance(step["output"], dict) and step["output"].get("status") == "error"):
+                st.caption("Done.")
+            elif isinstance(step.get("output"), dict) and step["output"].get("status") == "error":
+                st.caption("⚠️ This step reported an error -- see the reply above for how the agent handled it.")
+
+
+def _extract_tool_trace(agent) -> list[dict]:
+    """Every (name, input, output) for every tool call in agent.messages,
+    in order. A @tool function's plain-dict return (no "status"/"content"
+    keys of its own) gets JSON-serialized into the toolResult's one text
+    block by strands' decorator -- json.loads it back here."""
+    pending: dict[str, dict] = {}
+    order: list[str] = []
+    for msg in agent.messages:
+        for block in msg.get("content", []):
+            if not isinstance(block, dict):
+                continue
+            if "toolUse" in block:
+                tu = block["toolUse"]
+                tid = tu.get("toolUseId")
+                pending[tid] = {"name": tu.get("name", "tool"), "input": tu.get("input", {}), "output": None}
+                order.append(tid)
+            elif "toolResult" in block:
+                tr = block["toolResult"]
+                tid = tr.get("toolUseId")
+                if tid not in pending:
+                    continue
+                for c in tr.get("content", []):
+                    if isinstance(c, dict) and "text" in c:
+                        try:
+                            pending[tid]["output"] = json.loads(c["text"])
+                        except (json.JSONDecodeError, TypeError):
+                            pending[tid]["output"] = {"text": c["text"]}
+                        break
+    return [pending[tid] for tid in order]
 
 
 def save_uploaded_file(uploaded_file) -> str:
@@ -335,20 +457,46 @@ with tab_app:
             render_story(display_text)
 
         with st.chat_message("assistant", avatar="🦸"):
-            with st.spinner("Making the story..."):
-                result = st.session_state.agent(user_text)
-                response_text = str(result)
-            render_story(response_text)
+            workshop_slot = st.empty()
+            steps: list[dict] = []
 
-            tool_calls = [
-                block["toolUse"]["name"]
-                for msg in st.session_state.agent.messages
-                for block in msg.get("content", [])
-                if isinstance(block, dict) and "toolUse" in block
-            ]
-            if tool_calls:
-                pills = "".join(f'<span class="dh-tool-pill">{name}</span>' for name in tool_calls[-10:])
-                st.markdown(f'<div class="dh-tools">{pills}</div>', unsafe_allow_html=True)
+            async def _consume() -> None:
+                async for event in st.session_state.agent.stream_async(user_text):
+                    tool_use = (
+                        event.get("event", {})
+                        .get("contentBlockStart", {})
+                        .get("start", {})
+                        .get("toolUse")
+                    )
+                    if not tool_use:
+                        continue
+                    if steps:
+                        steps[-1]["status"] = "done"
+                    steps.append({"name": tool_use.get("name", "tool"), "status": "running", "input": None, "output": None})
+                    with workshop_slot.container():
+                        render_workshop(steps)
+
+            with st.spinner("Making the story..."):
+                asyncio.run(_consume())
+
+            # Live steps only had a bare tool name (input streams in as
+            # JSON deltas, not available at contentBlockStart) -- now that
+            # the turn is over, backfill each one's real input/output from
+            # the completed message history and collapse them all.
+            trace = _extract_tool_trace(st.session_state.agent)
+            this_turn = trace[-len(steps):] if steps else []
+            for step, t in zip(steps, this_turn):
+                step["input"] = t.get("input")
+                step["output"] = t.get("output")
+                step["status"] = "done"
+            with workshop_slot.container():
+                render_workshop(steps)
+
+            last_msg = st.session_state.agent.messages[-1]
+            response_text = "".join(
+                block.get("text", "") for block in last_msg.get("content", []) if isinstance(block, dict) and "text" in block
+            )
+            render_story(response_text)
 
         st.session_state.history.append(("assistant", response_text))
 
