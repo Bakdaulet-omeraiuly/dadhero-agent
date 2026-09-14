@@ -92,16 +92,20 @@ themselves, just do them):
    passed is False, revise the text and check again before moving on.
 
 7. Generate each page in order by calling generate_page_image with that
-   page's scene_description and the locked character_prompt_fragment. Use
-   a consistent story_slug across all of this story's pages/facts. For
-   page 1, omit reference_image_path (nothing to reference yet). For every
-   page after that, pass reference_image_path as page 1's returned
-   image_path so the art stays visually consistent.
+   page's scene_description, the locked character_prompt_fragment, AND
+   caption_text set to that page's exact narration -- the text gets
+   rendered into the artwork itself like a real comic panel, so don't
+   skip caption_text. Use a consistent story_slug across all of this
+   story's pages/facts. For page 1, omit reference_image_path (nothing to
+   reference yet). For every page after that, pass reference_image_path as
+   page 1's returned image_path so the art stays visually consistent.
 
 8. Present the finished story to the parent: the title, then each page's
-   text alongside its image. If a provider note says the image is a
-   placeholder (mock mode), say so plainly -- never claim a placeholder
-   is the final art.
+   image. Since the narration is already burned into each image, don't
+   repeat the page text separately underneath -- a short one-line label
+   per page (e.g. "Page 3") is enough. If a provider note says the image
+   is a placeholder (mock mode), say so plainly -- never claim a
+   placeholder is the final art.
 
 9. Invite feedback ("too scary", "make him smile more", "redo page 3").
    On feedback about a specific page, re-run the checks from step 6 for

@@ -3,18 +3,41 @@ DadHero demo UI (Streamlit).
 
 Run with: streamlit run app.py
 
-Renders the agent's markdown response directly -- it already contains
-page text plus ![](image_path) references, which Streamlit's markdown
-renderer displays as images since the paths are local files.
+The agent's response is markdown containing ![alt](local_path) image
+references, but Streamlit's st.markdown() can't display local filesystem
+images through that syntax (no static file route for them) -- it just
+renders a broken-image icon. render_story() below splits the text on
+those references and renders each text chunk with st.markdown() and each
+image with st.image(), in order.
 """
 
 from __future__ import annotations
 
 import os
+import re
 
 import streamlit as st
 
 from dadhero.agent import build_agent
+
+_IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+
+def render_story(text: str) -> None:
+    pos = 0
+    for match in _IMAGE_MD.finditer(text):
+        before = text[pos : match.start()].strip()
+        if before:
+            st.markdown(before)
+        alt, path = match.group(1), match.group(2)
+        if os.path.exists(path):
+            st.image(path, caption=alt or None, width="stretch")
+        else:
+            st.caption(f"(missing image: {path})")
+        pos = match.end()
+    tail = text[pos:].strip()
+    if tail:
+        st.markdown(tail)
 
 st.set_page_config(page_title="DadHero", page_icon="🦸", layout="centered")
 
@@ -59,7 +82,10 @@ with st.sidebar:
 
 for role, text in st.session_state.history:
     with st.chat_message(role):
-        st.markdown(text)
+        if role == "assistant":
+            render_story(text)
+        else:
+            st.markdown(text)
 
 user_text = st.chat_input("Describe your idea...")
 
@@ -72,7 +98,7 @@ if user_text:
         with st.spinner("Making the story..."):
             result = st.session_state.agent(user_text)
             response_text = str(result)
-        st.markdown(response_text)
+        render_story(response_text)
 
         tool_calls = [
             block["toolUse"]["name"]

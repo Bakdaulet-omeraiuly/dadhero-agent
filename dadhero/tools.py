@@ -84,18 +84,27 @@ def generate_page_image(
     scene_description: str,
     character_prompt_fragment: str,
     page_slug: str,
+    caption_text: Optional[str] = None,
     reference_image_path: Optional[str] = None,
 ) -> dict:
-    """Generate the illustration for one comic page.
+    """Generate the illustration for one comic page, with its narration burned into the artwork like a real comic panel.
 
     Args:
         scene_description: What's happening in this specific page/panel -- action, setting, mood. Don't re-describe the character's fixed appearance here, that's what character_prompt_fragment is for.
         character_prompt_fragment: The exact, unchanged prompt_fragment string returned by save_character/get_saved_character -- reused verbatim so the character looks the same across pages.
         page_slug: A short unique filename-safe id for this page, e.g. "space_dad_page3".
+        caption_text: This page's exact narration/dialogue text. Pass it every time -- it gets rendered INTO the image as a clean comic-style caption or speech bubble, not shown separately, so the page looks like a real comic panel. Keep it short (1-2 sentences); long text renders poorly.
         reference_image_path: The file path of a previously generated page's image (usually page 1's portrait) to condition on for visual consistency. Omit only for the very first image of a character.
     """
     provider = get_provider()
     prompt = f"{character_prompt_fragment}\n\nScene: {scene_description}"
+    if caption_text:
+        prompt += (
+            "\n\nRender this exact text directly into the image as a clean, legible "
+            "comic-book caption box along the bottom edge (a simple rounded white or "
+            "cream box with dark readable text, or a speech bubble if a character is "
+            f'speaking) -- do not alter the wording: "{caption_text}"'
+        )
     try:
         result = provider.generate(prompt, output_name=page_slug, reference_image_path=reference_image_path)
     except Exception as e:  # noqa: BLE001 -- surface any provider failure to the agent, not a crash

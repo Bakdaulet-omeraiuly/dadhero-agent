@@ -49,11 +49,15 @@ it:
 Same face, hair, glasses, and suit design across all three pages,
 generated from **one locked character description**, each page
 conditioned on page 1's image via `reference_image_path` -- nothing here
-is hand-picked or touched up. (Gemini also spontaneously added a
-"DAD-STRONAUT" name badge and a Kazakhstan flag patch on the suit,
-unprompted -- consistent across all three pages too.) A second story (a
-gardener rescuing a lost bunny) confirmed this wasn't a one-off: braid,
-scarf, and apron stayed consistent across its pages as well.
+is hand-picked or touched up. A second story (a gardener rescuing a lost
+bunny) confirmed this wasn't a one-off: braid, scarf, and apron stayed
+consistent across its pages as well.
+
+The narration is burned directly into each image as a comic-style caption
+box (`generate_page_image`'s `caption_text` parameter) instead of shown as
+separate text underneath -- Nano Banana renders it cleanly and legibly, so
+each page is an actual finished comic panel, not an illustration with a
+caption bolted on by the app.
 
 Set `DADHERO_IMAGE_PROVIDER=gemini` with a working `GEMINI_API_KEY` (see
 "Getting a working Gemini key" below -- it took three attempts to find a
@@ -138,8 +142,12 @@ before Gemini access does, Titan Image is the documented fallback path
 - **`dadhero/agent.py`** -- the Strands `Agent`, Bedrock primary /
   Anthropic fallback (same pattern as StoryMatch), with a system prompt
   encoding the full workflow including the child-safety redirect above.
-- **`app.py`** -- Streamlit chat UI; renders the agent's own markdown
-  (which embeds `![](image_path)` references) directly.
+- **`app.py`** -- Streamlit chat UI. Parses the agent's `![alt](path)`
+  image references out of its markdown response and renders each with
+  `st.image()` (Streamlit's markdown component can't display local
+  filesystem images through that syntax on its own -- it just shows a
+  broken-image icon, which is what a first version of this demo actually
+  did).
 - **`cli_demo.py`** -- terminal fallback with a `--scripted` mode replaying
   a verified real transcript, unattended.
 - **`tests/`** -- pytest for everything that doesn't need a live model
