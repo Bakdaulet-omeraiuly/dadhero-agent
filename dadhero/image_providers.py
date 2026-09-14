@@ -50,6 +50,7 @@ class ImageProvider(ABC):
         *,
         output_name: str,
         reference_image_path: str | None = None,
+        style_reference_image_path: str | None = None,
     ) -> GeneratedImage:
         """Generate one image from `prompt`.
 
@@ -58,6 +59,11 @@ class ImageProvider(ABC):
         the whole reason Nano Banana was chosen -- see README). A provider
         that can't do this yet may ignore the argument, but should say so
         in the returned GeneratedImage.note.
+
+        style_reference_image_path: a SEPARATE reference -- a real comic
+        page (see dadhero/comic_style_refs.py), not the character's own
+        portrait -- for panel/inking/composition conventions rather than
+        the character's appearance. Optional; a provider may ignore it.
         """
 
 
@@ -71,6 +77,7 @@ class MockImageProvider(ImageProvider):
         *,
         output_name: str,
         reference_image_path: str | None = None,
+        style_reference_image_path: str | None = None,
     ) -> GeneratedImage:
         from PIL import Image, ImageDraw, ImageFont
 
@@ -97,11 +104,20 @@ class MockImageProvider(ImageProvider):
                 fill=(150, 150, 150),
                 font=small,
             )
+        if style_reference_image_path:
+            draw.text(
+                (40, 720),
+                f"(would style-condition on: {Path(style_reference_image_path).name})",
+                fill=(150, 150, 150),
+                font=small,
+            )
         img.save(path)
 
         note = "Placeholder image -- set DADHERO_IMAGE_PROVIDER=gemini with a working API key for real art."
         if reference_image_path:
             note += f" (would condition on {Path(reference_image_path).name} for consistency)"
+        if style_reference_image_path:
+            note += f" (would style-condition on {Path(style_reference_image_path).name})"
 
         return GeneratedImage(path=str(path), provider="mock", note=note)
 
@@ -124,6 +140,7 @@ class GeminiImageProvider(ImageProvider):
         *,
         output_name: str,
         reference_image_path: str | None = None,
+        style_reference_image_path: str | None = None,
     ) -> GeneratedImage:
         from google.genai import types
 
@@ -131,6 +148,19 @@ class GeminiImageProvider(ImageProvider):
         path = OUTPUT_DIR / f"{output_name}.png"
 
         contents: list = []
+        # Style reference goes in FIRST and is explicitly named as a
+        # composition/inking reference only -- it must never be confused
+        # with the character reference below (a real vintage comic page
+        # has its own unrelated characters on it).
+        if style_reference_image_path and Path(style_reference_image_path).exists():
+            with open(style_reference_image_path, "rb") as f:
+                mime = "image/png" if style_reference_image_path.endswith(".png") else "image/jpeg"
+                contents.append(types.Part.from_bytes(data=f.read(), mime_type=mime))
+            contents.append(
+                "The image above is a real vintage printed comic-book page, shown ONLY "
+                "as a reference for panel composition, ink linework, and caption-box "
+                "style -- ignore its actual characters and story entirely."
+            )
         if reference_image_path and Path(reference_image_path).exists():
             with open(reference_image_path, "rb") as f:
                 contents.append(types.Part.from_bytes(data=f.read(), mime_type="image/png"))
@@ -161,11 +191,11 @@ class GeminiImageProvider(ImageProvider):
         with open(path, "wb") as f:
             f.write(image_bytes)
 
-        return GeneratedImage(
-            path=str(path),
-            provider="gemini",
-            note="Conditioned on reference image." if reference_image_path else "No reference image used.",
-        )
+        note = "Conditioned on reference image." if reference_image_path else "No reference image used."
+        if style_reference_image_path:
+            note += " Also style-conditioned on a real vintage comic page."
+
+        return GeneratedImage(path=str(path), provider="gemini", note=note)
 
 
 def get_provider() -> ImageProvider:

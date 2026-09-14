@@ -6,6 +6,8 @@ No live model or image-API calls -- same discipline as test_dadhero.py."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from dadhero import continuity, vision_check
 from dadhero.safety import check_age_appropriateness
 from dadhero.tools import audit_story_continuity, create_story_plan, generate_page_image, stylize_drawing
@@ -148,3 +150,50 @@ def test_stylize_drawing_respects_art_style(monkeypatch, tmp_path):
 
     stylize_drawing(drawing_path=str(drawing), output_name="test_out2")
     assert "pixel-art" not in captured_prompts[1].lower()
+
+
+def test_generate_page_image_style_conditions_only_comic_book(monkeypatch, tmp_path):
+    """A real public-domain comic page should be sent as an extra
+    reference ONLY for art_style="Comic book" -- every other style (or
+    none) must generate exactly as before, no style reference at all."""
+    import dadhero.image_providers as ip
+
+    monkeypatch.setenv("DADHERO_IMAGE_PROVIDER", "mock")
+    monkeypatch.setattr(ip, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("dadhero.storage.persist", lambda path: path)
+
+    captured = []
+    real_generate = ip.MockImageProvider.generate
+
+    def spy_generate(self, prompt, **kwargs):
+        captured.append(kwargs.get("style_reference_image_path"))
+        return real_generate(self, prompt, **kwargs)
+
+    monkeypatch.setattr(ip.MockImageProvider, "generate", spy_generate)
+
+    comic_result = generate_page_image(
+        scene_description="A hero waves hello",
+        character_prompt_fragment="A brave kid",
+        page_slug="style_test_comic",
+        art_style="Comic book",
+    )
+    assert captured[-1] is not None
+    assert Path(captured[-1]).name == "pep_comics_71_page35_1949.png"
+    assert "style-condition" in comic_result["note"].lower()
+
+    watercolor_result = generate_page_image(
+        scene_description="A hero waves hello",
+        character_prompt_fragment="A brave kid",
+        page_slug="style_test_watercolor",
+        art_style="Watercolor",
+    )
+    assert captured[-1] is None
+    assert "style-condition" not in watercolor_result["note"].lower()
+
+    no_style_result = generate_page_image(
+        scene_description="A hero waves hello",
+        character_prompt_fragment="A brave kid",
+        page_slug="style_test_none",
+    )
+    assert captured[-1] is None
+    assert "style-condition" not in no_style_result["note"].lower()

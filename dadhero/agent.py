@@ -210,7 +210,8 @@ themselves, just do them):
    came from save_character_from_photo (then use its stylized portrait).
    Every page after this chains reference_image_path from the COVER's
    returned image_path (not from page 1) so the whole book -- cover
-   included -- stays one consistent character.
+   included -- stays one consistent character. Pass art_style (the exact
+   label, same as step 5) to this call too, if the parent set one.
 
 8. Before generating each page's image, call check_story_fact for every
    concrete, checkable detail that page relies on (an object's color, a
@@ -224,8 +225,9 @@ themselves, just do them):
    page's scene_description, the locked character_prompt_fragment,
    caption_text set to that page's exact narration (rendered into the
    artwork itself like a real comic panel -- don't skip it), the same
-   story_slug, and reference_image_path set to the cover's image_path
-   (step 7) for visual consistency.
+   story_slug, reference_image_path set to the cover's image_path
+   (step 7) for visual consistency, and the same art_style from step 7
+   for every page.
 
    Right after each such call, run check_visual_consistency with that
    result's image_path, the same reference_image_path you passed in, and
@@ -264,9 +266,9 @@ themselves, just do them):
     exists in the Character Bible/Story Universe (get_saved_character /
     get_family_memory) or needs to be introduced fresh. Then re-run the
     checks from steps 8-9 for just that page (continuity check, safety
-    check, generate_page_image with the SAME character fragment and
-    reference image, then check_visual_consistency) -- don't touch pages
-    that weren't flagged.
+    check, generate_page_image with the SAME character fragment,
+    reference image, and art_style, then check_visual_consistency) --
+    don't touch pages that weren't flagged.
 
 13. Once the parent is happy, call record_finished_story so future
     conversations know this story/theme has been made already -- pass

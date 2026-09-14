@@ -59,6 +59,22 @@ dangerous real-world instructions a child could copy, adult themes) --
 still a deterministic keyword/heuristic screen, not full LLM-grade
 moderation; stated plainly rather than oversold.
 
+**Real comic-page style conditioning (2026-09-14)**: `generate_page_image`
+gained an optional `art_style` param (the exact ART_STYLES label, same
+value already passed to `save_character`/`stylize_drawing`). When it's
+"Comic book", a real public-domain golden-age comic-book page (verified
+individually on Wikimedia Commons, each with its own stated PD
+rationale -- see `dadhero/assets/comic_refs/LICENSES.md`) is sent to
+Gemini alongside the character reference image, explicitly framed as a
+panel/inking/composition reference only ("ignore its actual characters
+and story entirely") so it can't be confused with the character
+reference. Deliberately scoped to ONE style (`dadhero/comic_style_refs.py`)
+-- these are golden-age comic-book scans, not generic art references;
+forcing them onto watercolor/claymation/pixel-art etc. would be a style
+mismatch, not an enhancement. `ImageProvider.generate()` gained a
+matching `style_reference_image_path` param (optional, both providers
+handle `None` the same as before -- fully backward compatible).
+
 **Deliberately deferred** (stated plainly, not silently dropped): PDF/
 image-bundle export (`export_book`) -- no dependency gap (Pillow, already
 a dependency, can compose a multi-page PDF from the saved PNGs) but no

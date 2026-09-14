@@ -21,6 +21,7 @@ from strands import tool
 
 from dadhero import continuity, storage, vision_check
 from dadhero import memory_backend as memory
+from dadhero.comic_style_refs import get_style_reference_image
 from dadhero.image_providers import get_provider
 from dadhero.models import ART_STYLES, DEFAULT_ART_STYLE, CharacterBible
 from dadhero.safety import check_age_appropriateness as _check_age_appropriateness
@@ -233,6 +234,7 @@ def generate_page_image(
     caption_text: Optional[str] = None,
     reference_image_path: Optional[str] = None,
     is_cover: bool = False,
+    art_style: Optional[str] = None,
 ) -> dict:
     """Generate the illustration for one comic page, with its narration burned into the artwork like a real comic panel.
 
@@ -243,6 +245,7 @@ def generate_page_image(
         caption_text: This page's exact narration/dialogue text, OR (when is_cover=True) the book's title. Pass it every time -- it gets rendered INTO the image, not shown separately, so the page looks like a real comic panel/book cover. Keep it short (1-2 sentences, or a few words for a title); long text renders poorly.
         reference_image_path: The file path of a previously generated page's image (usually page 1's portrait, or the cover's) to condition on for visual consistency -- ALWAYS use the image_path field from a prior result here, never image_url (that may be a remote URL the image provider can't read bytes from). Omit only for the very first image of a character.
         is_cover: True for this story's front cover -- one per story, generated first, before page 1. Composes the character prominently and renders caption_text as a large book-cover title instead of a caption box.
+        art_style: The exact ART_STYLES label this story is using, if the parent picked a non-default one (same value passed to save_character/save_character_from_photo earlier). When it's "Comic book", a real vintage public-domain comic-book page is sent alongside as an extra reference for panel/inking conventions -- purely cosmetic conditioning, safe to omit for every other style.
 
     Returns image_path (local file -- pass this as reference_image_path on
     later calls) and image_url (what to actually show the parent -- on the
@@ -251,6 +254,7 @@ def generate_page_image(
     same-server temp file that won't survive a redeploy).
     """
     provider = get_provider()
+    style_reference_image_path = get_style_reference_image(art_style)
     prompt = f"{character_prompt_fragment}\n\nScene: {scene_description}"
     if is_cover:
         prompt += (
@@ -271,7 +275,12 @@ def generate_page_image(
             f'speaking) -- do not alter the wording: "{caption_text}"'
         )
     try:
-        result = provider.generate(prompt, output_name=page_slug, reference_image_path=reference_image_path)
+        result = provider.generate(
+            prompt,
+            output_name=page_slug,
+            reference_image_path=reference_image_path,
+            style_reference_image_path=style_reference_image_path,
+        )
     except Exception as e:  # noqa: BLE001 -- surface any provider failure to the agent, not a crash
         return {"status": "error", "content": [{"text": f"Image generation failed: {e}"}]}
     return {
