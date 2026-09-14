@@ -14,18 +14,22 @@ image as a base64-embedded, framed "comic panel" <img>, in order.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import uuid
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
+import yaml
 
 from dadhero.agent import build_agent
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
 _DEMO_DIR = Path(__file__).resolve().parent / "docs" / "demo"
+_OPENAPI_PATH = Path(__file__).resolve().parent / "docs" / "api" / "openapi.yaml"
 
 st.set_page_config(page_title="DadHero", page_icon="🦸", layout="centered")
 
@@ -164,6 +168,49 @@ def _img_tag(path: str) -> str:
     return f'<img src="data:image/{ext};base64,{data}" />'
 
 
+def render_api_reference() -> None:
+    """Embed the designed (not yet implemented) OpenAPI spec as a Redoc
+    panel inside the app itself -- one site, not a link out to a separate
+    artifact. The spec is inlined as JSON directly into the component's
+    HTML rather than fetched from a URL, since this runs in its own
+    sandboxed iframe with no route to serve docs/api/openapi.yaml from."""
+    if not _OPENAPI_PATH.exists():
+        st.info("API spec not found at docs/api/openapi.yaml.")
+        return
+
+    with open(_OPENAPI_PATH, encoding="utf-8") as f:
+        spec = yaml.safe_load(f)
+    spec_json = json.dumps(spec)
+
+    html = f"""
+    <div id="redoc-container" style="background:#FBF5E9;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@2.1.5/bundles/redoc.standalone.js"></script>
+    <script>
+      Redoc.init({spec_json}, {{
+        theme: {{
+          colors: {{
+            primary: {{ main: '#EE7B4F' }},
+            success: {{ main: '#2F9C8F' }},
+            text: {{ primary: '#2E241A', secondary: '#7A6B57' }},
+            border: {{ dark: '#E9DCC0', light: '#F3EAD9' }},
+            http: {{ get: '#2F9C8F', post: '#EE7B4F', patch: '#c9a227', delete: '#c0392b' }}
+          }},
+          typography: {{
+            fontFamily: "'Nunito', sans-serif",
+            headings: {{ fontFamily: "'Baloo 2', sans-serif" }},
+            code: {{ fontSize: '13px' }}
+          }},
+          rightPanel: {{ backgroundColor: '#2E241A' }},
+          sidebar: {{ backgroundColor: '#FFFDF8', textColor: '#2E241A' }}
+        }},
+        hideDownloadButton: false,
+        expandResponses: '201,200',
+      }}, document.getElementById('redoc-container'));
+    </script>
+    """
+    components.html(html, height=1100, scrolling=True)
+
+
 def render_story(text: str) -> None:
     pos = 0
     for match in _IMAGE_MD.finditer(text):
@@ -194,6 +241,8 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+tab_app, tab_api = st.tabs(["🦸 Story Maker", "📘 API Design"])
 
 if "agent" not in st.session_state:
     st.session_state.agent = build_agent()
@@ -237,72 +286,76 @@ with st.sidebar:
 
     st.divider()
     st.subheader("📘 For developers")
-    st.link_button(
-        "API Reference (planned)",
-        "https://claude.ai/code/artifact/c173bc68-12f2-4974-bb25-e542b8f92e3d",
-        width="stretch",
-    )
     st.caption(
-        "A designed (not yet built) REST API for a future web platform "
-        "version of DadHero -- documentation only, no server behind it. "
-        "This app is the real, working submission."
+        "See the **API Design** tab above for a designed (not yet built) "
+        "REST API for a future web platform version of DadHero -- "
+        "documentation only, embedded right here, no server behind it."
     )
 
-# Show the page "at rest" with real generated proof instead of a blank
-# chat -- a first-time visitor sees what this actually makes before typing
-# anything.
-if not st.session_state.history and _DEMO_DIR.exists():
-    demo_images = sorted(_DEMO_DIR.glob("example_page*.png"))
-    if demo_images:
-        st.markdown("##### 📖 A story DadHero actually made")
-        cols = st.columns(len(demo_images))
-        for col, img_path in zip(cols, demo_images):
-            with col:
-                st.markdown(f'<div class="dh-gallery-card">{_img_tag(str(img_path))}</div>', unsafe_allow_html=True)
-        st.caption("Real output -- same locked character, chained across pages. Now describe your own idea below.")
-        st.divider()
+with tab_app:
+    # Show the page "at rest" with real generated proof instead of a blank
+    # chat -- a first-time visitor sees what this actually makes before
+    # typing anything.
+    if not st.session_state.history and _DEMO_DIR.exists():
+        demo_images = sorted(_DEMO_DIR.glob("example_page*.png"))
+        if demo_images:
+            st.markdown("##### 📖 A story DadHero actually made")
+            cols = st.columns(len(demo_images))
+            for col, img_path in zip(cols, demo_images):
+                with col:
+                    st.markdown(f'<div class="dh-gallery-card">{_img_tag(str(img_path))}</div>', unsafe_allow_html=True)
+            st.caption("Real output -- same locked character, chained across pages. Now describe your own idea below.")
+            st.divider()
 
-for role, text in st.session_state.history:
-    with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
-        render_story(text)
+    for role, text in st.session_state.history:
+        with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
+            render_story(text)
 
-chat_value = st.chat_input(
-    "Describe your idea, or attach a photo/drawing...",
-    accept_file=True,
-    file_type=["png", "jpg", "jpeg"],
-)
+    chat_value = st.chat_input(
+        "Describe your idea, or attach a photo/drawing...",
+        accept_file=True,
+        file_type=["png", "jpg", "jpeg"],
+    )
 
-if chat_value:
-    user_text = chat_value.text or ""
-    display_text = user_text
+    if chat_value:
+        user_text = chat_value.text or ""
+        display_text = user_text
 
-    for uploaded in chat_value.files:
-        saved_path = save_uploaded_file(uploaded)
-        user_text += f"\n\n[Uploaded file: {saved_path}]"
-        display_text += f"\n\n![attached]({saved_path})"
+        for uploaded in chat_value.files:
+            saved_path = save_uploaded_file(uploaded)
+            user_text += f"\n\n[Uploaded file: {saved_path}]"
+            display_text += f"\n\n![attached]({saved_path})"
 
-    if not user_text.strip():
-        user_text = "(see attached file)"
-        display_text = "(see attached file)"
+        if not user_text.strip():
+            user_text = "(see attached file)"
+            display_text = "(see attached file)"
 
-    st.session_state.history.append(("user", display_text))
-    with st.chat_message("user", avatar="🙂"):
-        render_story(display_text)
+        st.session_state.history.append(("user", display_text))
+        with st.chat_message("user", avatar="🙂"):
+            render_story(display_text)
 
-    with st.chat_message("assistant", avatar="🦸"):
-        with st.spinner("Making the story..."):
-            result = st.session_state.agent(user_text)
-            response_text = str(result)
-        render_story(response_text)
+        with st.chat_message("assistant", avatar="🦸"):
+            with st.spinner("Making the story..."):
+                result = st.session_state.agent(user_text)
+                response_text = str(result)
+            render_story(response_text)
 
-        tool_calls = [
-            block["toolUse"]["name"]
-            for msg in st.session_state.agent.messages
-            for block in msg.get("content", [])
-            if isinstance(block, dict) and "toolUse" in block
-        ]
-        if tool_calls:
-            pills = "".join(f'<span class="dh-tool-pill">{name}</span>' for name in tool_calls[-10:])
-            st.markdown(f'<div class="dh-tools">{pills}</div>', unsafe_allow_html=True)
+            tool_calls = [
+                block["toolUse"]["name"]
+                for msg in st.session_state.agent.messages
+                for block in msg.get("content", [])
+                if isinstance(block, dict) and "toolUse" in block
+            ]
+            if tool_calls:
+                pills = "".join(f'<span class="dh-tool-pill">{name}</span>' for name in tool_calls[-10:])
+                st.markdown(f'<div class="dh-tools">{pills}</div>', unsafe_allow_html=True)
 
-    st.session_state.history.append(("assistant", response_text))
+        st.session_state.history.append(("assistant", response_text))
+
+with tab_api:
+    st.markdown("##### 🧩 DadHero REST API -- design, not yet built")
+    st.caption(
+        "OpenAPI 3.1 spec for a future web platform version of DadHero. "
+        "No server implements this -- see docs/api/design-notes.md for the rationale."
+    )
+    render_api_reference()
