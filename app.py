@@ -254,10 +254,42 @@ def _tool_label(name: str) -> tuple[str, str]:
     return _TOOL_LABELS.get(name, ("⚙️", name))
 
 
+# Keys that are real internal wiring (a default family id, a chaining
+# slug/path, the full locked character prompt reused verbatim on every
+# page) -- meaningful to the code, not to a parent glancing at what the
+# agent is doing. Hidden from the Workshop panel's detail view.
+_STEP_DETAIL_HIDDEN_KEYS = {
+    "family_id",
+    "story_slug",
+    "character_prompt_fragment",
+    "page_slug",
+    "reference_image_path",
+    "is_cover",
+}
+
+
+def _format_step_detail(data: dict) -> str:
+    """A tool call's input/output as a few plain-language lines instead
+    of a raw JSON block -- a parent should see 'Idea: a lost tooth
+    story', not {"family_id": "default_family", ...}."""
+    lines = []
+    for key, value in data.items():
+        if key in _STEP_DETAIL_HIDDEN_KEYS or value in (None, "", [], {}):
+            continue
+        label = key.replace("_", " ").capitalize()
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value) if value else ""
+        text = str(value)
+        if len(text) > 220:
+            text = text[:220] + "..."
+        lines.append(f"**{label}:** {text}")
+    return "  \n".join(lines)
+
+
 def render_workshop(steps: list[dict]) -> None:
     """One expander per tool call, in order -- the running step stays open,
-    finished ones collapse to a checkmark, expandable to see exactly what
-    the agent passed in (and got back, once available)."""
+    finished ones collapse to a checkmark, expandable to see (in plain
+    language, not raw JSON) what the agent passed in and got back."""
     if not steps:
         return
     st.markdown('<div class="dh-workshop-label">🔨 Workshop</div>', unsafe_allow_html=True)
@@ -267,13 +299,15 @@ def render_workshop(steps: list[dict]) -> None:
         badge = "⏳" if running else "✅"
         with st.expander(f"{icon} {label} {badge}", expanded=running and i == len(steps) - 1):
             if step.get("input"):
-                st.json(step["input"], expanded=False)
+                detail = _format_step_detail(step["input"])
+                if detail:
+                    st.markdown(detail)
             elif running:
                 st.caption("Working...")
-            if step.get("output") and not (isinstance(step["output"], dict) and step["output"].get("status") == "error"):
-                st.caption("Done.")
-            elif isinstance(step.get("output"), dict) and step["output"].get("status") == "error":
+            if isinstance(step.get("output"), dict) and step["output"].get("status") == "error":
                 st.caption("⚠️ This step reported an error -- see the reply above for how the agent handled it.")
+            elif step.get("output"):
+                st.caption("Done.")
 
 
 def _extract_tool_trace(agent) -> list[dict]:
