@@ -1,0 +1,17 @@
+# Hides Streamlit's own chrome (the top-right "Deploy" button + hamburger
+# menu, the "Made with Streamlit" footer, the running-man spinner) -- the
+# single biggest thing making a Streamlit app read as "a template" rather
+# than a real product. app.py's own CSS still hides the toolbar/footer as
+# a belt-and-suspenders (this config alone can be overridden by a viewer's
+# URL params), but this is the documented, supported way to set it.
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = false
+
+[theme]
+base = "light"
+primaryColor = "#EE7B4F"
+backgroundColor = "#FBF5E9"
+secondaryBackgroundColor = "#FFFDF8"
+textColor = "#2E241A"
+font = "sans serif"

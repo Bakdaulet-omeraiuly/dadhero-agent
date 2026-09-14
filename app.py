@@ -23,6 +23,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from dadhero import memory_backend as memory
 from dadhero.agent import build_agent
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
@@ -82,6 +83,27 @@ st.markdown(
     html, body, [class*="css"] { font-family: 'Nunito', sans-serif; }
     h1, h2, h3 { font-family: 'Baloo 2', sans-serif !important; color: var(--ink) !important; }
 
+    /* Hide Streamlit's own chrome (Deploy button, hamburger menu, "Made
+       with Streamlit" footer) -- config.toml's toolbarMode="minimal"
+       does most of this already; this is belt-and-suspenders for the
+       footer/badge a viewer's URL params could otherwise reveal. The
+       single biggest thing that makes a Streamlit app read as a
+       template instead of a real product. */
+    #MainMenu, footer, [data-testid="stStatusWidget"] { visibility: hidden; }
+    header[data-testid="stHeader"] { background: transparent; }
+
+    /* Sidebar's example-prompt card (replaces a raw st.code() block,
+       which doesn't wrap and was clipping mid-word at the sidebar's
+       fixed width -- this is prose, not code). Hardcoded dark colors to
+       match the sidebar's own always-dark treatment above, not the
+       light-mode --paper/--border tokens this sits among elsewhere. */
+    .dh-example-card {
+        font-style: italic; font-size: 13px; line-height: 1.5;
+        color: #B9AA90 !important; background: #2A2216;
+        border: 1.5px dashed #40331F; border-radius: 10px;
+        padding: 10px 12px;
+    }
+
     /* Hero header */
     .dh-hero {
         display: flex; align-items: center; gap: 16px;
@@ -130,6 +152,13 @@ st.markdown(
         background: var(--card); border: 2px solid var(--border);
         border-radius: 18px; padding: 4px 6px; margin-bottom: 10px;
         box-shadow: 0 3px 10px var(--shadow);
+    }
+    /* The agent's own "### Page N" heading right before each panel --
+       styled as a small caps label (matching .dh-panel-label) rather
+       than a full-size heading, now that it's the only label. */
+    [data-testid="stChatMessage"] h3 {
+        font-size: 13px !important; letter-spacing: .03em; text-transform: uppercase;
+        color: var(--accent2) !important; margin: 10px 2px 4px !important;
     }
 
     /* Buttons */
@@ -289,11 +318,18 @@ def render_story(text: str) -> None:
     pos = 0
     for match in _IMAGE_MD.finditer(text):
         before = text[pos : match.start()].strip()
+        alt, path = match.group(1), match.group(2)
+        # The agent's own text already puts a "### Page N" heading right
+        # before each image (see agent.py's system prompt, step 9) --
+        # showing the image's alt text as ITS OWN small label too just
+        # duplicated that same "Page N" twice in a row. Only fall back to
+        # the alt-text label when the agent's text didn't already supply
+        # a heading immediately above this image.
+        had_heading = bool(before)
         if before:
             st.markdown(before)
-        alt, path = match.group(1), match.group(2)
         if os.path.exists(path):
-            label = f'<div class="dh-panel-label">{alt}</div>' if alt else ""
+            label = "" if had_heading else (f'<div class="dh-panel-label">{alt}</div>' if alt else "")
             st.markdown(f'{label}<div class="dh-panel">{_img_tag(path)}</div>', unsafe_allow_html=True)
         else:
             st.caption(f"(missing image: {path})")
@@ -333,6 +369,43 @@ with st.sidebar:
     else:
         st.success(f"Image provider: **{provider}** 🎨")
 
+    # Makes the Story Universe's persistence (data/family_memory.json --
+    # unaffected by a page refresh or a new browser tab, unlike
+    # st.session_state.history) something a visitor can actually SEE,
+    # not just a claim in the bullet list below.
+    profile = memory.get_family_profile("default_family")
+    saved_characters = profile.get("characters", {})
+    saved_places = profile.get("places", {})
+    saved_stories = profile.get("stories", [])
+    if saved_characters or saved_places or saved_stories:
+        st.subheader("🗂️ Story Universe")
+        if saved_characters:
+            with st.expander(f"👤 Characters ({len(saved_characters)})"):
+                for name, bible in saved_characters.items():
+                    subtitle = bible.get("relationship", "")
+                    if bible.get("role_in_story"):
+                        subtitle += f" · {bible['role_in_story']}"
+                    st.markdown(f"**{name}**  \n{subtitle}")
+                    if bible.get("appearance"):
+                        st.caption(bible["appearance"])
+                    ref = bible.get("reference_image_path")
+                    if ref and os.path.exists(ref):
+                        st.markdown(f'<div class="dh-gallery-card">{_img_tag(ref)}</div>', unsafe_allow_html=True)
+        if saved_places:
+            with st.expander(f"🏞️ Places ({len(saved_places)})"):
+                for name, description in saved_places.items():
+                    st.markdown(f"**{name}**")
+                    st.caption(description)
+        if saved_stories:
+            with st.expander(f"📖 Stories ({len(saved_stories)})"):
+                for s in saved_stories:
+                    line = f"**{s.get('title', 'Untitled')}**"
+                    if s.get("goal"):
+                        line += f"  \n_Goal: {s['goal']}_"
+                    st.markdown(line)
+                    if s.get("idea"):
+                        st.caption(s["idea"])
+
     st.subheader("🧠 Why this is an agent")
     st.markdown(
         "- Builds a **Character Bible** once, reuses it verbatim per page\n"
@@ -343,12 +416,16 @@ with st.sidebar:
     )
 
     st.subheader("💬 Try")
-    st.code(
-        "My husband has short black hair, glasses, and a red\n"
-        "hoodie. I want a 5-page comic where he's a brave\n"
-        "astronaut who saves a lost baby star, for our\n"
-        "5-year-old daughter.",
-        language=None,
+    # A prose example, not code -- st.code() renders a fixed-width
+    # terminal block that doesn't wrap, clipping mid-word in the
+    # sidebar's fixed narrow width. Plain markdown wraps naturally.
+    st.markdown(
+        '<div class="dh-example-card">'
+        "“My husband has short black hair, glasses, and a red hoodie. "
+        "I want a 5-page comic where he's a brave astronaut who saves a "
+        "lost baby star, for our 5-year-old daughter.”"
+        "</div>",
+        unsafe_allow_html=True,
     )
     st.caption(
         "📎 attach a photo of an **adult** family member for a likeness-based "
