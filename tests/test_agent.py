@@ -10,6 +10,8 @@ from dadhero.agent import build_agent  # noqa: E402
 
 EXPECTED_TOOLS = {
     "save_character",
+    "save_character_from_photo",
+    "stylize_drawing",
     "get_saved_character",
     "generate_page_image",
     "get_family_memory",

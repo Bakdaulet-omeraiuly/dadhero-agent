@@ -19,6 +19,7 @@ from dadhero import continuity, memory
 from dadhero.image_providers import get_provider
 from dadhero.models import DEFAULT_ART_STYLE, CharacterBible
 from dadhero.safety import check_age_appropriateness as _check_age_appropriateness
+from dadhero.safety import PHOTO_SAFETY_RULE, is_minor_relationship
 
 
 @tool
@@ -77,6 +78,101 @@ def get_saved_character(character_name: str, family_id: str = "default_family") 
     if not record:
         return {"status": "error", "content": [{"text": f"No saved character named '{character_name}' for this family."}]}
     return record
+
+
+@tool
+def save_character_from_photo(
+    photo_path: str,
+    character_name: str,
+    relationship: str,
+    personality_traits: Optional[List[str]] = None,
+    role_in_story: str = "",
+    family_id: str = "default_family",
+) -> dict:
+    """Save a character built from an uploaded reference photo, stylized into the comic's art style.
+
+    SAFETY: refuses if `relationship` indicates the character is a child
+    (son, daughter, kid, student, etc.) -- a real child's photo must never
+    be used to generate their likeness. For a child character, use
+    save_character with a text description instead, or stylize_drawing if
+    the child made their own drawing (that's fine regardless of subject,
+    since it isn't a photographic likeness of a real face).
+
+    Args:
+        photo_path: File path to the parent's uploaded reference photo of an adult family member.
+        character_name: The character's name as the child knows them.
+        relationship: Who they are to the child -- must NOT be a child/minor relationship (e.g. "dad", "mom", "grandma", "uncle" are fine).
+        personality_traits: A few traits that should show in expression/pose.
+        role_in_story: The "costume"/theme for this story (e.g. "astronaut"). Leave empty for a realistic depiction.
+        family_id: Identifier for this family (default "default_family").
+    """
+    if is_minor_relationship(relationship):
+        return {
+            "status": "error",
+            "content": [{"text": f"Refused: '{relationship}' reads as a child relationship. {PHOTO_SAFETY_RULE}"}],
+        }
+
+    provider = get_provider()
+    role = f", dressed as {role_in_story}," if role_in_story else ","
+    style_prompt = (
+        f"Create a warm, flat-color children's storybook illustration of the person in this "
+        f"reference photo{role} in this style: {DEFAULT_ART_STYLE}. Keep their recognizable "
+        "features (hair, build, any glasses or signature accessory) but fully stylized as a "
+        "cartoon illustration, not a photorealistic render."
+    )
+    portrait_slug = f"{character_name.lower().replace(' ', '_')}_reference_portrait"
+    try:
+        result = provider.generate(style_prompt, output_name=portrait_slug, reference_image_path=photo_path)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "content": [{"text": f"Stylizing the photo failed: {e}"}]}
+
+    bible = CharacterBible(
+        character_name=character_name,
+        relationship=relationship,
+        appearance=f"as shown in the stylized reference portrait at {result.path}",
+        personality_traits=personality_traits or [],
+        role_in_story=role_in_story,
+        art_style=DEFAULT_ART_STYLE,
+        reference_image_path=result.path,
+    )
+    record = {
+        "character_name": bible.character_name,
+        "relationship": bible.relationship,
+        "appearance": bible.appearance,
+        "personality_traits": bible.personality_traits,
+        "role_in_story": bible.role_in_story,
+        "art_style": bible.art_style,
+        "prompt_fragment": bible.prompt_fragment(),
+        "reference_image_path": result.path,
+    }
+    memory.save_character(family_id, character_name, record)
+    return record
+
+
+@tool
+def stylize_drawing(drawing_path: str, output_name: str, style_note: str = "") -> dict:
+    """Turn a child's own drawing/sketch into a polished illustration in the comic's art style.
+
+    Safe for any subject -- a child's drawing of themselves, a monster, or
+    anything else is not a photographic likeness of a real face, so this
+    has none of save_character_from_photo's restrictions.
+
+    Args:
+        drawing_path: File path to the uploaded drawing/sketch.
+        output_name: A short unique filename-safe id for the output image.
+        style_note: Optional extra guidance (e.g. "make the dragon friendlier, keep the crayon colors").
+    """
+    provider = get_provider()
+    prompt = (
+        f"Bring this child's drawing to life as a polished, warm illustration in this style: "
+        f"{DEFAULT_ART_STYLE}. Keep the spirit, shapes, and character of the original drawing -- "
+        f"don't redesign it into something unrecognizable. {style_note}".strip()
+    )
+    try:
+        result = provider.generate(prompt, output_name=output_name, reference_image_path=drawing_path)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "content": [{"text": f"Stylizing the drawing failed: {e}"}]}
+    return {"image_path": result.path, "provider": result.provider, "note": result.note}
 
 
 @tool

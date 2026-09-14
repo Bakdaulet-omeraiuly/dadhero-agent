@@ -30,6 +30,35 @@ _MAX_RECOMMENDED_WORDS_PER_AGE = {
 }
 
 
+# Terms that mean "this character is a minor." Deliberately broad/blunt --
+# a false positive here just means the parent gets asked to describe the
+# character in words instead of uploading a photo, which is a mild
+# inconvenience. A false negative would mean a real child's photo went
+# into an image-generation pipeline, which is the actual harm this exists
+# to prevent. Bias hard toward refusing when unsure.
+_MINOR_RELATIONSHIP_TERMS = [
+    "child", "kid", "son", "daughter", "boy", "girl", "baby", "infant",
+    "toddler", "teen", "teenager", "niece", "nephew", "grandchild",
+    "student", "pupil",
+]
+
+
+def is_minor_relationship(relationship: str) -> bool:
+    """True if `relationship` suggests the character is a child, in which
+    case a photo must never be used as the basis for their appearance --
+    only a text description. See PHOTO_SAFETY_RULE for why."""
+    lowered = relationship.strip().lower()
+    return any(term in lowered for term in _MINOR_RELATIONSHIP_TERMS)
+
+
+PHOTO_SAFETY_RULE = (
+    "A real photo of a child must never be used to generate that child's "
+    "likeness. This applies regardless of the parent's intent or "
+    "permission -- describe the character in words instead (hair, an "
+    "accessory, a distinguishing feature)."
+)
+
+
 def check_age_appropriateness(text: str, child_age: int | None = None) -> dict:
     """
     Scan one page's narration text for clearly age-inappropriate content

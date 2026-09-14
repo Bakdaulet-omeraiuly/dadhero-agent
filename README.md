@@ -26,10 +26,35 @@ without controversy, because there's no real photo of a real identifiable
 person anywhere in the pipeline.
 
 So DadHero supports **any family member as the hero -- including the
-child** -- but the character's appearance always comes from the parent's
-TEXT description, never an upload. `dadhero/agent.py`'s system prompt makes
-this an explicit, non-negotiable rule: decline a photo if one is offered,
-ask for a text description instead, regardless of who the character is.
+child** -- and, since this update, a real **photo upload**, but only under
+one rule: a photo may only become a character's likeness for an **adult**
+relationship (dad, mom, grandma, uncle, a family friend, yourself). A
+child's own **drawing/sketch** can be brought to life regardless of
+subject -- it isn't a photographic likeness of a real face, so it carries
+none of the same risk.
+
+```
+Uploaded photo  + adult relationship  -> save_character_from_photo   OK
+Uploaded photo  + child relationship  -> refused, text description asked instead
+Uploaded drawing + any relationship   -> stylize_drawing              OK
+```
+
+This is enforced twice: `dadhero/agent.py`'s system prompt tells the model
+to refuse a child's photo before even considering a tool call, AND
+`save_character_from_photo` itself checks `relationship` against a list of
+minor-indicating terms (`dadhero/safety.is_minor_relationship`) and refuses
+regardless of what the model decided -- a prompt-only rule that's one
+jailbreak away from being ignored isn't a safety rule. Verified live: a
+message claiming a photo was of "my daughter" was refused before any tool
+was even called; the same flow with "my husband" correctly called
+`save_character_from_photo` and produced a consistent stylized portrait
+across a 2-page story.
+
+**Uploading in the app:** `app.py`'s chat input accepts an attached image
+(the 📎 icon). The file is saved to `data/uploads/` and the agent is told
+its path in plain text -- the text model never needs to *see* the image
+itself; the image *model* (Gemini) is what actually uses it as a
+reference when a tool calls `provider.generate(..., reference_image_path=...)`.
 
 ## ✅ Status: real image generation is verified and working
 
@@ -131,9 +156,10 @@ before Gemini access does, Titan Image is the documented fallback path
   (concerning-term list + length-vs-age heuristic) run on every page's
   text before it's shown, instead of just trusting the model's judgment
   silently.
-- **`dadhero/tools.py`** -- 7 Strands `@tool` functions: `save_character`,
-  `get_saved_character`, `generate_page_image`, `get_family_memory`,
-  `check_story_fact`, `check_page_safety`, `record_finished_story`. Story
+- **`dadhero/tools.py`** -- 9 Strands `@tool` functions: `save_character`,
+  `save_character_from_photo`, `stylize_drawing`, `get_saved_character`,
+  `generate_page_image`, `get_family_memory`, `check_story_fact`,
+  `check_page_safety`, `record_finished_story`. Story
   *planning* (the page-by-page outline, and mapping the parent's intention
   to a story objective) is deliberately NOT a tool -- like StoryMatch's
   Narrative Fingerprint extraction, it's the agent's own reasoning, because

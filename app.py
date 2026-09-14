@@ -15,12 +15,27 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
+from pathlib import Path
 
 import streamlit as st
 
 from dadhero.agent import build_agent
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+_UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
+
+
+def save_uploaded_file(uploaded_file) -> str:
+    """Save a Streamlit UploadedFile to disk and return its absolute path,
+    so the agent can pass that path straight to save_character_from_photo /
+    stylize_drawing -- the LLM never needs to see the image itself, only
+    know where it is."""
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ext = Path(uploaded_file.name).suffix or ".png"
+    dest = _UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+    dest.write_bytes(uploaded_file.getvalue())
+    return str(dest)
 
 
 def render_story(text: str) -> None:
@@ -79,20 +94,41 @@ with st.sidebar:
         "5-year-old daughter.",
         language=None,
     )
+    st.caption(
+        "📎 attach a photo of an **adult** family member for a likeness-based "
+        "portrait, or your child's own drawing to bring to life -- never a "
+        "photo of the child (see the safety note in the README)."
+    )
 
 for role, text in st.session_state.history:
     with st.chat_message(role):
         if role == "assistant":
             render_story(text)
         else:
-            st.markdown(text)
+            render_story(text)  # user turns may also carry an attached image reference
 
-user_text = st.chat_input("Describe your idea...")
+chat_value = st.chat_input(
+    "Describe your idea, or attach a photo/drawing...",
+    accept_file=True,
+    file_type=["png", "jpg", "jpeg"],
+)
 
-if user_text:
-    st.session_state.history.append(("user", user_text))
+if chat_value:
+    user_text = chat_value.text or ""
+    display_text = user_text
+
+    for uploaded in chat_value.files:
+        saved_path = save_uploaded_file(uploaded)
+        user_text += f"\n\n[Uploaded file: {saved_path}]"
+        display_text += f"\n\n![attached]({saved_path})"
+
+    if not user_text.strip():
+        user_text = "(see attached file)"
+        display_text = "(see attached file)"
+
+    st.session_state.history.append(("user", display_text))
     with st.chat_message("user"):
-        st.markdown(user_text)
+        render_story(display_text)
 
     with st.chat_message("assistant"):
         with st.spinner("Making the story..."):

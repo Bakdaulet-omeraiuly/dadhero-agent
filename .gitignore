@@ -4,4 +4,5 @@ __pycache__/
 .env
 data/family_memory.json
 data/generated_pages/
+data/uploads/
 .DS_Store
