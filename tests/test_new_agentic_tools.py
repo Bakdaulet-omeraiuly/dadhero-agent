@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dadhero import continuity, vision_check
 from dadhero.safety import check_age_appropriateness
-from dadhero.tools import audit_story_continuity, create_story_plan, generate_page_image
+from dadhero.tools import audit_story_continuity, create_story_plan, generate_page_image, stylize_drawing
 
 
 def test_create_story_plan_records_and_returns_the_plan():
@@ -123,3 +123,28 @@ def test_safety_flags_bullying_and_dangerous_content():
     matches = check_age_appropriateness("She found some matches and almost lit them.")
     assert matches["passed"] is False
     assert "matches" in matches["concerning_terms_found"]
+
+
+def test_stylize_drawing_respects_art_style(monkeypatch, tmp_path):
+    import dadhero.image_providers as ip
+
+    monkeypatch.setenv("DADHERO_IMAGE_PROVIDER", "mock")
+    monkeypatch.setattr(ip, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("dadhero.storage.persist", lambda path: path)
+    drawing = tmp_path / "sketch.png"
+    drawing.write_bytes(b"fake")
+
+    captured_prompts = []
+    real_generate = ip.MockImageProvider.generate
+
+    def spy_generate(self, prompt, **kwargs):
+        captured_prompts.append(prompt)
+        return real_generate(self, prompt, **kwargs)
+
+    monkeypatch.setattr(ip.MockImageProvider, "generate", spy_generate)
+
+    stylize_drawing(drawing_path=str(drawing), output_name="test_out", art_style="Pixel art")
+    assert "pixel-art" in captured_prompts[0].lower()
+
+    stylize_drawing(drawing_path=str(drawing), output_name="test_out2")
+    assert "pixel-art" not in captured_prompts[1].lower()

@@ -160,8 +160,9 @@ themselves, just do them):
    pages.
 
    If the parent's settings include an art style, pass that tool's
-   art_style argument as the exact label from this list (the tool looks
-   up the actual art-direction text itself):
+   art_style argument (save_character, save_character_from_photo, AND
+   stylize_drawing all accept it) as the exact label from this list (the
+   tool looks up the actual art-direction text itself):
 {_STYLE_LIST}
    Omit art_style entirely for the default warm storybook look.
    Reusing a saved character (get_saved_character) keeps whatever style

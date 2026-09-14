@@ -548,7 +548,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    with st.expander("⚙️ Story settings", expanded=False):
+    with st.expander("⚙️ Story settings", expanded=True):
         st.caption("Applies to your next message -- passed straight to the agent as an explicit constraint, not just a hint.")
         st.number_input("Child's age", min_value=2, max_value=12, value=None, key="setting_age", placeholder="Any")
         st.selectbox("Tone", ["Any", "Funny", "Adventure", "Calm", "Emotional"], key="setting_tone")
@@ -705,8 +705,13 @@ with st.expander("✏️ Draw a sketch (instead of uploading a photo)", expanded
                 # going through the agent/model for every click would be far
                 # slower for no benefit here.
                 sketch_path = save_canvas_drawing(canvas_result.image_data)
+                selected_style = st.session_state.get("setting_style", "Storybook (default)")
                 with st.spinner("Gemini is illustrating your sketch..."):
-                    result = stylize_drawing(drawing_path=sketch_path, output_name=f"preview_{uuid.uuid4().hex[:8]}")
+                    result = stylize_drawing(
+                        drawing_path=sketch_path,
+                        output_name=f"preview_{uuid.uuid4().hex[:8]}",
+                        art_style=None if selected_style.startswith("Storybook") else selected_style,
+                    )
                 if result.get("status") == "error":
                     st.error(result["content"][0]["text"])
                 else:

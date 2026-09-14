@@ -193,7 +193,7 @@ def save_character_from_photo(
 
 
 @tool
-def stylize_drawing(drawing_path: str, output_name: str, style_note: str = "") -> dict:
+def stylize_drawing(drawing_path: str, output_name: str, style_note: str = "", art_style: Optional[str] = None) -> dict:
     """Turn a child's own drawing/sketch into a polished illustration in the comic's art style.
 
     Safe for any subject -- a child's drawing of themselves, a monster, or
@@ -204,11 +204,13 @@ def stylize_drawing(drawing_path: str, output_name: str, style_note: str = "") -
         drawing_path: File path to the uploaded drawing/sketch.
         output_name: A short unique filename-safe id for the output image.
         style_note: Optional extra guidance (e.g. "make the dragon friendlier, keep the crayon colors").
+        art_style: A label from dadhero.models.ART_STYLES if the parent picked a style in settings -- pass the label; this function looks up the actual art-direction text. Omit for the default warm storybook look.
     """
     provider = get_provider()
+    chosen_style = _resolve_art_style(art_style)
     prompt = (
         f"Bring this child's drawing to life as a polished, warm illustration in this style: "
-        f"{DEFAULT_ART_STYLE}. Keep the spirit, shapes, and character of the original drawing -- "
+        f"{chosen_style}. Keep the spirit, shapes, and character of the original drawing -- "
         f"don't redesign it into something unrecognizable. {style_note}".strip()
     )
     try:
