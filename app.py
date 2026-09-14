@@ -234,6 +234,16 @@ st.markdown(
         box-shadow: 3px 3px 0 var(--accent2); background: var(--card);
     }
     .dh-gallery-card img { display: block; width: 100%; }
+    /* A character with no reference photo yet -- a monogram avatar, not
+       a tiny icon adrift in a huge box (the card would otherwise size
+       to the column's full width with nothing to naturally cap it,
+       unlike an <img> whose own aspect ratio does that). */
+    .dh-avatar-placeholder {
+        display: flex; align-items: center; justify-content: center;
+        height: 120px; font-family: 'Baloo 2', sans-serif; font-weight: 800;
+        font-size: 44px; color: var(--accent-ink);
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+    }
 
     /* Workshop panel -- live trace of the agent's tool calls while a
        story is being made: real steps, not a generic spinner. */
@@ -508,9 +518,16 @@ if _studio_characters:
                 if ref and os.path.exists(ref):
                     st.markdown(f'<div class="dh-gallery-card">{_img_tag(ref)}</div>', unsafe_allow_html=True)
                 else:
+                    # No reference photo (a text-described character never
+                    # gets one until a page is generated) -- a monogram
+                    # avatar instead of a tiny icon lost in a huge empty
+                    # square. Fixed height, not width-based aspect-ratio,
+                    # so it doesn't balloon into a giant box on a wide
+                    # column -- a real portrait's own aspect ratio still
+                    # governs the branch above.
+                    initial = (name.strip()[:1] or "?").upper()
                     st.markdown(
-                        '<div class="dh-gallery-card" style="display:flex;align-items:center;'
-                        'justify-content:center;aspect-ratio:1;font-size:40px;">🧑‍🎨</div>',
+                        f'<div class="dh-gallery-card dh-avatar-placeholder">{initial}</div>',
                         unsafe_allow_html=True,
                     )
                 subtitle = bible.get("relationship", "")
