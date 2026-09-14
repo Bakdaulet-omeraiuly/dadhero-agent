@@ -12,18 +12,24 @@ so they don't need re-describing next time.
 ## The safety decision this product is built around
 
 Early versions of this idea considered depicting the **child** as the
-comic's hero, personalized with their photo and name. We deliberately did
-not build that: generating images of a real minor from an uploaded photo is
-a real child-safety and privacy concern, independent of how the feature is
-marketed.
+comic's hero, personalized from an uploaded photo. We deliberately did not
+build that: feeding a real minor's photo into a generative image pipeline
+is a real child-safety and privacy concern, independent of how the feature
+is marketed.
 
-**DadHero depicts an adult family member instead** (a dad, mom, grandparent,
-etc.), described in text by the parent who is making the gift -- never a
-photo, never the child. This keeps the emotional hook that made the idea
-worth building ("my child's own dad, drawn as their hero") while removing
-the part that shouldn't be built. `dadhero/agent.py`'s system prompt
-explicitly refuses to depict a child and redirects toward an adult family
-member if asked.
+The actual line that matters isn't "never depict a child" -- it's **never
+build a character's appearance from a real photo of a real person**. A
+benign, text-described child character (name, hair color, a favorite
+t-shirt) having an illustrated adventure is the same thing personalized
+children's book companies (Wonderbly and similar) have shipped for years
+without controversy, because there's no real photo of a real identifiable
+person anywhere in the pipeline.
+
+So DadHero supports **any family member as the hero -- including the
+child** -- but the character's appearance always comes from the parent's
+TEXT description, never an upload. `dadhero/agent.py`'s system prompt makes
+this an explicit, non-negotiable rule: decline a photo if one is offered,
+ask for a text description instead, regardless of who the character is.
 
 ## ⚠️ Status: image generation is the one unverified piece
 
@@ -89,13 +95,22 @@ before Gemini access does, Titan Image is the documented fallback path
 - **`dadhero/image_providers.py`** -- the `ImageProvider` interface,
   `MockImageProvider` (proven), `GeminiImageProvider` (written,
   unverified -- see Status above).
-- **`dadhero/tools.py`** -- 5 Strands `@tool` functions: `save_character`,
+- **`dadhero/continuity.py`** -- deterministic per-story fact tracking
+  (StorySprout's "red backpack on page 1, blue on page 4" problem). Plain
+  Python state comparison, not a second LLM call hoping it remembers --
+  same philosophy as StoryMatch's evidence verification.
+- **`dadhero/safety.py`** -- a real, explainable age-appropriateness screen
+  (concerning-term list + length-vs-age heuristic) run on every page's
+  text before it's shown, instead of just trusting the model's judgment
+  silently.
+- **`dadhero/tools.py`** -- 7 Strands `@tool` functions: `save_character`,
   `get_saved_character`, `generate_page_image`, `get_family_memory`,
-  `record_finished_story`. Story *planning* (the page-by-page outline) is
-  deliberately NOT a tool -- like StoryMatch's Narrative Fingerprint
-  extraction, it's the agent's own reasoning, because there's nothing
-  external to call for it. Only steps that touch persistence or generate
-  real media are tools.
+  `check_story_fact`, `check_page_safety`, `record_finished_story`. Story
+  *planning* (the page-by-page outline, and mapping the parent's intention
+  to a story objective) is deliberately NOT a tool -- like StoryMatch's
+  Narrative Fingerprint extraction, it's the agent's own reasoning, because
+  there's nothing external to call for it. Only steps that touch
+  persistence, verification state, or generate real media are tools.
 - **`dadhero/agent.py`** -- the Strands `Agent`, Bedrock primary /
   Anthropic fallback (same pattern as StoryMatch), with a system prompt
   encoding the full workflow including the child-safety redirect above.
@@ -131,6 +146,37 @@ Three-turn conversation, run for real during development:
 3. **Parent:** *"Save this story please!"*
    -> Called `record_finished_story`. Confirmed Papa Nurlan is now saved
    for reuse in future stories without redescribing him.
+
+A second, later verification run tested the child-as-hero path plus the
+new continuity/safety tools, from a StorySprout-style *intention* rather
+than a plot:
+
+**Parent:** *"My son Arman is 7 and nervous about starting a new school.
+Make a funny adventure where he becomes braver and makes a friend. He has
+curly brown hair and always wears his favorite green dinosaur t-shirt."*
+
+-> The agent turned "nervous about school" into a treasure-hunt story
+where Arman's bravery is *shown* through escalating small challenges
+(climbing a tree, crossing a wobbly bridge, calling out to a stranger) --
+never a stated moral -- ending with him making a friend, tying his
+dinosaur t-shirt into a joke the two new friends bond over. Full tool
+trace for the 7-page story:
+
+```
+get_family_memory -> save_character
+-> check_story_fact x2 -> check_page_safety -> generate_page_image   (page 1)
+-> check_page_safety -> generate_page_image                          (page 2)
+-> check_story_fact x2 -> check_page_safety -> generate_page_image   (page 3)
+-> check_page_safety -> generate_page_image                          (page 4)
+-> check_story_fact x2 -> check_page_safety -> generate_page_image   (page 5)
+-> check_page_safety -> generate_page_image                          (page 6)
+-> check_page_safety -> generate_page_image                          (page 7)
+```
+
+22 tool calls for one story -- `check_story_fact` and `check_page_safety`
+fire on real pages, not just `generate_page_image` seven times. That
+verification density is the actual evidence this is doing agentic work,
+not decorating a single prompt.
 
 ## Setup
 
@@ -195,7 +241,18 @@ Reset family memory / generated images between demo runs:
 ## Pitch (for the submission form)
 
 > Every parent has told their kid a bedtime story where they're the hero.
-> DadHero turns that into something the child can actually see: describe an
-> idea, and it builds a short illustrated comic starring a real family
-> member -- consistent from page to page, remembered for next time, and
-> designed from the ground up to never need a photo of your child to work.
+> DadHero turns that into something the child can see: describe an idea --
+> or just an intention, like "he's nervous about starting school" -- and it
+> maps that to a story objective, builds a consistent illustrated character
+> (any family member, including the child, always from a text description,
+> never a photo), plans a page-by-page arc that shows the lesson instead of
+> stating it, checks its own continuity and age-appropriateness on every
+> page, and remembers the character for next time.
+
+## Credit
+
+The child-safety reframe (adult-hero-by-default) and initial scope were
+this project's own decision; the parent-intention framing, continuity
+fact-checking, and explicit safety-tool ideas were adapted from a
+teammate's `StorySprout_Hackathon_Idea.md` design doc, with the photo-based
+child depiction it proposed deliberately left out for the reasons above.

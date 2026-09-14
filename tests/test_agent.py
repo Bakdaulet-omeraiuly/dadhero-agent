@@ -13,6 +13,8 @@ EXPECTED_TOOLS = {
     "get_saved_character",
     "generate_page_image",
     "get_family_memory",
+    "check_story_fact",
+    "check_page_safety",
     "record_finished_story",
 }
 

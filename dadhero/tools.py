@@ -15,9 +15,10 @@ from typing import List, Optional
 
 from strands import tool
 
-from dadhero import memory
+from dadhero import continuity, memory
 from dadhero.image_providers import get_provider
 from dadhero.models import DEFAULT_ART_STYLE, CharacterBible
+from dadhero.safety import check_age_appropriateness as _check_age_appropriateness
 
 
 @tool
@@ -113,6 +114,40 @@ def get_family_memory(family_id: str = "default_family") -> dict:
         family_id: Identifier for this family (default "default_family").
     """
     return memory.get_family_profile(family_id)
+
+
+@tool
+def check_story_fact(story_slug: str, fact_key: str, fact_value: str) -> dict:
+    """Record and continuity-check one concrete story detail before using it on a page.
+
+    Call this for anything a reader would notice if it changed later --
+    an object's color, a location, a sidekick's name, what time of day it
+    is. If this fact_key was already established differently earlier in
+    the same story, this returns a conflict so you can fix the page
+    instead of introducing an inconsistency (StorySprout's "red backpack
+    on page 1, blue on page 4" problem).
+
+    Args:
+        story_slug: The same short id used for this story's generate_page_image calls.
+        fact_key: A short identifier for the detail (e.g. "backpack_color", "sidekick_name", "location").
+        fact_value: The value this page is about to use for that detail.
+    """
+    return continuity.check_and_record_fact(story_slug, fact_key, fact_value)
+
+
+@tool
+def check_page_safety(page_text: str, child_age: Optional[int] = None) -> dict:
+    """Screen one page's narration text for age-appropriateness before presenting it.
+
+    Call this on every page's text before showing it to the parent. If
+    passed is False, revise the text (soften the concerning term, or
+    shorten it) and check again rather than presenting it as-is.
+
+    Args:
+        page_text: The exact narration text for this page.
+        child_age: The child's age if known -- sharpens the length guideline.
+    """
+    return _check_age_appropriateness(page_text, child_age)
 
 
 @tool
