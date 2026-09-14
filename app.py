@@ -8,11 +8,12 @@ references, but Streamlit's st.markdown() can't display local filesystem
 images through that syntax (no static file route for them) -- it just
 renders a broken-image icon. render_story() below splits the text on
 those references and renders each text chunk with st.markdown() and each
-image with st.image(), in order.
+image as a base64-embedded, framed "comic panel" <img>, in order.
 """
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import uuid
@@ -24,6 +25,125 @@ from dadhero.agent import build_agent
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
+_DEMO_DIR = Path(__file__).resolve().parent / "docs" / "demo"
+
+st.set_page_config(page_title="DadHero", page_icon="🦸", layout="centered")
+
+# ---------------------------------------------------------------- styling --
+# Subject-grounded palette: a warm storybook page (not the generic AI
+# cream+terracotta+serif combo -- accent is a two-crayon pairing, coral +
+# teal, like a kid's crayon box) with a playful display face for headings
+# and a clean rounded body face for reading. Full light/dark token sets so
+# it holds in both hosts.
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700;800&display=swap');
+
+    :root {
+        --paper: #FBF5E9;
+        --card: #FFFDF8;
+        --ink: #2E241A;
+        --ink-soft: #7A6B57;
+        --border: #E9DCC0;
+        --accent: #EE7B4F;
+        --accent-ink: #FFFFFF;
+        --accent2: #2F9C8F;
+        --shadow: rgba(46, 36, 26, 0.10);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            --paper: #211A12;
+            --card: #2A2216;
+            --ink: #F3EAD9;
+            --ink-soft: #B9AA90;
+            --border: #40331F;
+            --accent: #F3936A;
+            --accent-ink: #241A10;
+            --accent2: #52C2B2;
+            --shadow: rgba(0, 0, 0, 0.35);
+        }
+    }
+    :root[data-theme="dark"] {
+        --paper: #211A12;
+        --card: #2A2216;
+        --ink: #F3EAD9;
+        --ink-soft: #B9AA90;
+        --border: #40331F;
+        --accent: #F3936A;
+        --accent-ink: #241A10;
+        --accent2: #52C2B2;
+        --shadow: rgba(0, 0, 0, 0.35);
+    }
+
+    .stApp { background: var(--paper); color: var(--ink); }
+    html, body, [class*="css"] { font-family: 'Nunito', sans-serif; }
+    h1, h2, h3 { font-family: 'Baloo 2', sans-serif !important; color: var(--ink) !important; }
+
+    /* Hero header */
+    .dh-hero {
+        display: flex; align-items: center; gap: 16px;
+        padding: 18px 22px; margin-bottom: 6px;
+        background: var(--card); border: 2px solid var(--border);
+        border-radius: 20px; box-shadow: 0 6px 18px var(--shadow);
+    }
+    .dh-hero-emoji { font-size: 42px; line-height: 1; }
+    .dh-hero h1 { margin: 0; font-size: 30px; font-weight: 800; }
+    .dh-hero p { margin: 2px 0 0; color: var(--ink-soft); font-size: 15px; font-weight: 600; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] { background: var(--card); border-right: 2px solid var(--border); }
+    [data-testid="stSidebar"] h3 { font-size: 17px !important; margin-top: 6px; }
+
+    /* Chat bubbles */
+    [data-testid="stChatMessage"] {
+        background: var(--card); border: 2px solid var(--border);
+        border-radius: 18px; padding: 4px 6px; margin-bottom: 10px;
+        box-shadow: 0 3px 10px var(--shadow);
+    }
+
+    /* Buttons */
+    .stButton > button {
+        border-radius: 999px !important; border: 2px solid var(--accent) !important;
+        color: var(--accent) !important; font-weight: 700 !important; background: transparent !important;
+    }
+    .stButton > button:hover { background: var(--accent) !important; color: var(--accent-ink) !important; }
+
+    /* Chat input pill */
+    [data-testid="stChatInput"] {
+        border: 2px solid var(--border) !important; border-radius: 999px !important;
+        background: var(--card) !important;
+    }
+
+    /* Comic panel image frame */
+    .dh-panel {
+        border: 3px solid var(--ink); border-radius: 14px; overflow: hidden;
+        margin: 10px 0 14px; box-shadow: 4px 4px 0 var(--accent);
+        background: var(--card);
+    }
+    .dh-panel img { display: block; width: 100%; }
+    .dh-panel-label {
+        font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 13px;
+        letter-spacing: .03em; text-transform: uppercase; color: var(--accent2);
+        margin: 2px 2px 6px;
+    }
+
+    /* Tool-call trace pills */
+    .dh-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .dh-tool-pill {
+        font-size: 11px; font-weight: 700; color: var(--accent2);
+        border: 1.5px solid var(--accent2); border-radius: 999px; padding: 2px 9px;
+    }
+
+    .dh-gallery-card {
+        border: 3px solid var(--ink); border-radius: 14px; overflow: hidden;
+        box-shadow: 3px 3px 0 var(--accent2); background: var(--card);
+    }
+    .dh-gallery-card img { display: block; width: 100%; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def save_uploaded_file(uploaded_file) -> str:
@@ -38,6 +158,12 @@ def save_uploaded_file(uploaded_file) -> str:
     return str(dest)
 
 
+def _img_tag(path: str) -> str:
+    data = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    ext = Path(path).suffix.lstrip(".") or "png"
+    return f'<img src="data:image/{ext};base64,{data}" />'
+
+
 def render_story(text: str) -> None:
     pos = 0
     for match in _IMAGE_MD.finditer(text):
@@ -46,7 +172,8 @@ def render_story(text: str) -> None:
             st.markdown(before)
         alt, path = match.group(1), match.group(2)
         if os.path.exists(path):
-            st.image(path, caption=alt or None, width="stretch")
+            label = f'<div class="dh-panel-label">{alt}</div>' if alt else ""
+            st.markdown(f'{label}<div class="dh-panel">{_img_tag(path)}</div>', unsafe_allow_html=True)
         else:
             st.caption(f"(missing image: {path})")
         pos = match.end()
@@ -54,17 +181,26 @@ def render_story(text: str) -> None:
     if tail:
         st.markdown(tail)
 
-st.set_page_config(page_title="DadHero", page_icon="🦸", layout="centered")
 
-st.title("🦸 DadHero")
-st.caption("Tell it your idea. It turns a family member into your child's comic-book hero.")
+st.markdown(
+    """
+    <div class="dh-hero">
+      <div class="dh-hero-emoji">🦸</div>
+      <div>
+        <h1>DadHero</h1>
+        <p>Turns a child's real life -- fears, milestones, memories -- into personalized illustrated stories that grow with them.</p>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if "agent" not in st.session_state:
     st.session_state.agent = build_agent()
     st.session_state.history = []
 
 with st.sidebar:
-    st.subheader("Session")
+    st.subheader("🌟 Session")
     if st.button("Start a new story"):
         st.session_state.agent = build_agent()
         st.session_state.history = []
@@ -74,19 +210,18 @@ with st.sidebar:
     if provider == "mock":
         st.warning("Image provider: **mock** (placeholder art). Set DADHERO_IMAGE_PROVIDER=gemini for real illustrations.")
     else:
-        st.success(f"Image provider: **{provider}**")
+        st.success(f"Image provider: **{provider}** 🎨")
 
-    st.subheader("Why this is an agent")
+    st.subheader("🧠 Why this is an agent")
     st.markdown(
         "- Builds a **Character Bible** once, reuses it verbatim per page\n"
         "- Plans a 5-8 page story arc from a proven template\n"
-        "- Calls `generate_page_image` once per page, chaining a\n"
-        "  reference image forward for visual consistency\n"
+        "- Chains a reference image forward for visual consistency\n"
         "- Regenerates only the page you flag on feedback\n"
-        "- Remembers the character across future stories"
+        "- **Remembers** characters, places, goals & progress across sessions"
     )
 
-    st.subheader("Try")
+    st.subheader("💬 Try")
     st.code(
         "My husband has short black hair, glasses, and a red\n"
         "hoodie. I want a 5-page comic where he's a brave\n"
@@ -100,12 +235,23 @@ with st.sidebar:
         "photo of the child (see the safety note in the README)."
     )
 
+# Show the page "at rest" with real generated proof instead of a blank
+# chat -- a first-time visitor sees what this actually makes before typing
+# anything.
+if not st.session_state.history and _DEMO_DIR.exists():
+    demo_images = sorted(_DEMO_DIR.glob("example_page*.png"))
+    if demo_images:
+        st.markdown("##### 📖 A story DadHero actually made")
+        cols = st.columns(len(demo_images))
+        for col, img_path in zip(cols, demo_images):
+            with col:
+                st.markdown(f'<div class="dh-gallery-card">{_img_tag(str(img_path))}</div>', unsafe_allow_html=True)
+        st.caption("Real output -- same locked character, chained across pages. Now describe your own idea below.")
+        st.divider()
+
 for role, text in st.session_state.history:
-    with st.chat_message(role):
-        if role == "assistant":
-            render_story(text)
-        else:
-            render_story(text)  # user turns may also carry an attached image reference
+    with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
+        render_story(text)
 
 chat_value = st.chat_input(
     "Describe your idea, or attach a photo/drawing...",
@@ -127,10 +273,10 @@ if chat_value:
         display_text = "(see attached file)"
 
     st.session_state.history.append(("user", display_text))
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🙂"):
         render_story(display_text)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="🦸"):
         with st.spinner("Making the story..."):
             result = st.session_state.agent(user_text)
             response_text = str(result)
@@ -143,6 +289,7 @@ if chat_value:
             if isinstance(block, dict) and "toolUse" in block
         ]
         if tool_calls:
-            st.caption("Tool calls this turn: " + " → ".join(tool_calls[-10:]))
+            pills = "".join(f'<span class="dh-tool-pill">{name}</span>' for name in tool_calls[-10:])
+            st.markdown(f'<div class="dh-tools">{pills}</div>', unsafe_allow_html=True)
 
     st.session_state.history.append(("assistant", response_text))
