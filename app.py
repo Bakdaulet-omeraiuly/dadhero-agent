@@ -27,6 +27,7 @@ from streamlit_drawable_canvas import st_canvas
 from dadhero import memory_backend as memory
 from dadhero.agent import build_agent
 from dadhero.models import ART_STYLES
+from dadhero.tools import stylize_drawing
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
@@ -481,6 +482,7 @@ with st.sidebar:
         st.session_state.history = []
         st.session_state.pending_plan = None
         st.session_state.pending_drawing_path = None
+        st.session_state.drawing_preview_path = None
         st.rerun()
 
     provider = os.environ.get("DADHERO_IMAGE_PROVIDER", "mock")
@@ -669,24 +671,57 @@ with st.expander("✏️ Draw a sketch (instead of uploading a photo)", expanded
     st.caption(
         "For the child's own drawing brought to life -- draw it right here, no "
         "scanner/photo needed. Safe for any subject, including the child "
-        "themselves (see the safety note above: this is NOT a photo likeness)."
+        "themselves (see the safety note above: this is NOT a photo likeness). "
+        "Sketch, then '✨ See Gemini's version' to preview the stylized art as "
+        "many times as you like before using it."
     )
-    canvas_result = st_canvas(
-        stroke_width=6,
-        stroke_color="#2E241A",
-        background_color="#FFFFFF",
-        height=320,
-        width=480,
-        drawing_mode="freedraw",
-        return_image_data=True,
-        key="drawing_canvas",
-    )
-    if st.button("Use this drawing", key="use_drawing"):
-        if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
-            st.session_state.pending_drawing_path = save_canvas_drawing(canvas_result.image_data)
-            st.success("Saved -- it'll attach to your next message below.")
+    draw_col, preview_col = st.columns(2)
+    with draw_col:
+        st.caption("Your sketch")
+        canvas_result = st_canvas(
+            stroke_width=6,
+            stroke_color="#2E241A",
+            background_color="#FFFFFF",
+            height=320,
+            width=400,
+            drawing_mode="freedraw",
+            return_image_data=True,
+            key="drawing_canvas",
+        )
+    with preview_col:
+        st.caption("Gemini's version")
+        preview_slot = st.container(height=320, border=True)
+        if st.session_state.get("drawing_preview_path"):
+            preview_slot.image(st.session_state.drawing_preview_path)
         else:
-            st.warning("The canvas is empty -- draw something first.")
+            preview_slot.caption("Draw something, then click below to preview it.")
+
+    preview_btn_col, use_btn_col = st.columns(2)
+    with preview_btn_col:
+        if st.button("✨ See Gemini's version", key="preview_drawing", use_container_width=True):
+            if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
+                # Direct tool call, not a full agent turn -- this is a fast
+                # preview loop (draw, check, draw more), not a chat message;
+                # going through the agent/model for every click would be far
+                # slower for no benefit here.
+                sketch_path = save_canvas_drawing(canvas_result.image_data)
+                with st.spinner("Gemini is illustrating your sketch..."):
+                    result = stylize_drawing(drawing_path=sketch_path, output_name=f"preview_{uuid.uuid4().hex[:8]}")
+                if result.get("status") == "error":
+                    st.error(result["content"][0]["text"])
+                else:
+                    st.session_state.drawing_preview_path = result["image_path"]
+                    st.rerun()
+            else:
+                st.warning("The canvas is empty -- draw something first.")
+    with use_btn_col:
+        if st.button("Use this drawing", key="use_drawing", use_container_width=True):
+            if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
+                st.session_state.pending_drawing_path = save_canvas_drawing(canvas_result.image_data)
+                st.session_state.drawing_preview_path = None
+                st.success("Saved -- it'll attach to your next message below.")
+            else:
+                st.warning("The canvas is empty -- draw something first.")
 
 if st.session_state.get("pending_drawing_path"):
     st.caption(f"📎 Drawing ready to attach: {Path(st.session_state.pending_drawing_path).name}")
