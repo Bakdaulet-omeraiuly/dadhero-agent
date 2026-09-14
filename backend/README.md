@@ -130,7 +130,7 @@ just moves the same unknowns to a slower feedback loop).
 - Deployment is configured (`backend/Dockerfile`, see above) but not
   actually deployed anywhere yet.
 
-### Closed since the initial rebuild
+### Closed since the initial rebuild -- all live-verified (2026-09-14)
 
 - **`pages` table now gets written to.** `dadhero/tools.py`'s
   `generate_page_image` is still unchanged (persists the image file only,
@@ -141,10 +141,18 @@ just moves the same unknowns to a slower feedback loop).
   `stories` row keyed by `conversation_id`
   (`memory_supabase.record_story` upserts onto that same row once
   `record_finished_story` fires). Requires
-  `supabase/migrations/0003_pages_gap.sql`.
-- **`POST`/`PATCH .../pages`** (direct, non-chat page generation) are
-  implemented in `routers/stories.py`, delegating to the exact same
+  `supabase/migrations/0003_pages_gap.sql` (applied). Verified: a real
+  chat turn produced 2 real Gemini pages, correctly attached to a single
+  `status: "finished"` story row (no duplicate draft row left behind).
+- **`POST`/`GET`/`PATCH .../pages`** (direct, non-chat page generation)
+  are implemented in `routers/stories.py`, delegating to the exact same
   `check_story_fact`/`check_page_safety`/`generate_page_image` functions
   the chat agent calls -- one place enforces continuity/safety, not two
   that could drift (same pattern as `routers/characters.py`'s
-  `create_character`).
+  `create_character`). Verified: create character -> create story ->
+  create page 1 (real image) -> a conflicting fact on page 2 correctly
+  409s -> an unsafe caption correctly 422s -> regenerating page 1
+  succeeds. Found and fixed one real bug along the way:
+  `save_character`/`save_character_from_photo` discarded the Supabase
+  row's `id`, so a dashboard client had no `character_id` to pass to
+  `POST /me/stories` -- see `dadhero/tools.py`'s comments there.
