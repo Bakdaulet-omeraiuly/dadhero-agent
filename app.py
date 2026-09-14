@@ -22,7 +22,23 @@ import uuid
 from pathlib import Path
 
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
+
+# streamlit-drawable-canvas (last verified working -- see CLAUDE.md) is a
+# community component that lags behind Streamlit's own component protocol.
+# It has since broken on import against newer Streamlit releases (a real,
+# reproduced StreamlitAPIException inside the package's own __init__.py,
+# not a guess) -- since requirements.txt pins no upper bound on either
+# package, a routine Streamlit Cloud reinstall could pull an incompatible
+# pair and take the WHOLE app down at import time. Never let one optional
+# feature's import crash the entire submission -- degrade to "unavailable"
+# instead.
+try:
+    from streamlit_drawable_canvas import st_canvas
+
+    CANVAS_AVAILABLE = True
+except Exception:
+    st_canvas = None
+    CANVAS_AVAILABLE = False
 
 from dadhero import memory_backend as memory
 from dadhero.agent import build_agent
@@ -495,6 +511,19 @@ if "story_library" not in st.session_state:
     # table is the persisted version of this library, see
     # backend/README.md.
     st.session_state.story_library = []
+if "active_character_name" not in st.session_state:
+    # Which saved character the CURRENT story is about, if any -- set at
+    # the "Use {name}" button click and refreshed whenever a
+    # save_character/get_saved_character call is seen. Deliberately a
+    # plain session_state value, not something re-derived from
+    # agent.messages later: Strands' default SlidingWindowConversationManager
+    # (window_size=40) trims old messages once a story's tool-call count
+    # grows past it, so by the time a multi-page book finishes generating,
+    # an earlier turn's character-selection call may simply no longer
+    # exist in agent.messages to search for -- trimmed, not just
+    # out-of-turn. Persisting the name directly at the moment it's known
+    # sidesteps that entirely.
+    st.session_state.active_character_name = None
 
 quick_start_text: str | None = None
 
@@ -536,6 +565,7 @@ if _studio_characters:
                 st.caption(f"**{name}**  \n{subtitle}")
                 if st.button(f"✨ Use {name}", key=f"use_char_{name}", use_container_width=True):
                     quick_start_text = f"Use my saved character {name} for a new story."
+                    st.session_state.active_character_name = name
     st.divider()
 
 if st.session_state.story_library:
@@ -572,6 +602,7 @@ with st.sidebar:
         st.session_state.pending_plan = None
         st.session_state.pending_drawing_path = None
         st.session_state.drawing_preview_path = None
+        st.session_state.active_character_name = None
         st.rerun()
 
     provider = os.environ.get("DADHERO_IMAGE_PROVIDER", "mock")
@@ -755,65 +786,72 @@ if st.session_state.history and st.session_state.history[-1][0] == "assistant":
         quick_start_text = "Continue this adventure -- write the next chapter in the same Story Universe, for the same hero."
 
 with st.expander("✏️ Draw a sketch (instead of uploading a photo)", expanded=False):
-    st.caption(
-        "For the child's own drawing brought to life -- draw it right here, no "
-        "scanner/photo needed. Safe for any subject, including the child "
-        "themselves (see the safety note above: this is NOT a photo likeness). "
-        "Sketch, then '✨ See Gemini's version' to preview the stylized art as "
-        "many times as you like before using it."
-    )
-    draw_col, preview_col = st.columns(2)
-    with draw_col:
-        st.caption("Your sketch")
-        canvas_result = st_canvas(
-            stroke_width=6,
-            stroke_color="#2E241A",
-            background_color="#FFFFFF",
-            height=320,
-            width=400,
-            drawing_mode="freedraw",
-            return_image_data=True,
-            key="drawing_canvas",
+    if not CANVAS_AVAILABLE:
+        st.info(
+            "The in-browser sketch canvas is temporarily unavailable in this "
+            "deployment. Upload a drawing as a photo below instead -- it works "
+            "exactly the same way once it's a file."
         )
-    with preview_col:
-        st.caption("Gemini's version")
-        preview_slot = st.container(height=320, border=True)
-        if st.session_state.get("drawing_preview_path"):
-            preview_slot.image(st.session_state.drawing_preview_path)
-        else:
-            preview_slot.caption("Draw something, then click below to preview it.")
+    else:
+        st.caption(
+            "For the child's own drawing brought to life -- draw it right here, no "
+            "scanner/photo needed. Safe for any subject, including the child "
+            "themselves (see the safety note above: this is NOT a photo likeness). "
+            "Sketch, then '✨ See Gemini's version' to preview the stylized art as "
+            "many times as you like before using it."
+        )
+        draw_col, preview_col = st.columns(2)
+        with draw_col:
+            st.caption("Your sketch")
+            canvas_result = st_canvas(
+                stroke_width=6,
+                stroke_color="#2E241A",
+                background_color="#FFFFFF",
+                height=320,
+                width=400,
+                drawing_mode="freedraw",
+                return_image_data=True,
+                key="drawing_canvas",
+            )
+        with preview_col:
+            st.caption("Gemini's version")
+            preview_slot = st.container(height=320, border=True)
+            if st.session_state.get("drawing_preview_path"):
+                preview_slot.image(st.session_state.drawing_preview_path)
+            else:
+                preview_slot.caption("Draw something, then click below to preview it.")
 
-    preview_btn_col, use_btn_col = st.columns(2)
-    with preview_btn_col:
-        if st.button("✨ See Gemini's version", key="preview_drawing", use_container_width=True):
-            if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
-                # Direct tool call, not a full agent turn -- this is a fast
-                # preview loop (draw, check, draw more), not a chat message;
-                # going through the agent/model for every click would be far
-                # slower for no benefit here.
-                sketch_path = save_canvas_drawing(canvas_result.image_data)
-                selected_style = st.session_state.get("setting_style", "Storybook (default)")
-                with st.spinner("Gemini is illustrating your sketch..."):
-                    result = stylize_drawing(
-                        drawing_path=sketch_path,
-                        output_name=f"preview_{uuid.uuid4().hex[:8]}",
-                        art_style=None if selected_style.startswith("Storybook") else selected_style,
-                    )
-                if result.get("status") == "error":
-                    st.error(result["content"][0]["text"])
+        preview_btn_col, use_btn_col = st.columns(2)
+        with preview_btn_col:
+            if st.button("✨ See Gemini's version", key="preview_drawing", use_container_width=True):
+                if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
+                    # Direct tool call, not a full agent turn -- this is a fast
+                    # preview loop (draw, check, draw more), not a chat message;
+                    # going through the agent/model for every click would be far
+                    # slower for no benefit here.
+                    sketch_path = save_canvas_drawing(canvas_result.image_data)
+                    selected_style = st.session_state.get("setting_style", "Storybook (default)")
+                    with st.spinner("Gemini is illustrating your sketch..."):
+                        result = stylize_drawing(
+                            drawing_path=sketch_path,
+                            output_name=f"preview_{uuid.uuid4().hex[:8]}",
+                            art_style=None if selected_style.startswith("Storybook") else selected_style,
+                        )
+                    if result.get("status") == "error":
+                        st.error(result["content"][0]["text"])
+                    else:
+                        st.session_state.drawing_preview_path = result["image_path"]
+                        st.rerun()
                 else:
-                    st.session_state.drawing_preview_path = result["image_path"]
-                    st.rerun()
-            else:
-                st.warning("The canvas is empty -- draw something first.")
-    with use_btn_col:
-        if st.button("Use this drawing", key="use_drawing", use_container_width=True):
-            if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
-                st.session_state.pending_drawing_path = save_canvas_drawing(canvas_result.image_data)
-                st.session_state.drawing_preview_path = None
-                st.success("Saved -- it'll attach to your next message below.")
-            else:
-                st.warning("The canvas is empty -- draw something first.")
+                    st.warning("The canvas is empty -- draw something first.")
+        with use_btn_col:
+            if st.button("Use this drawing", key="use_drawing", use_container_width=True):
+                if canvas_result.image_data is not None and canvas_result.image_data[:, :, 3].any():
+                    st.session_state.pending_drawing_path = save_canvas_drawing(canvas_result.image_data)
+                    st.session_state.drawing_preview_path = None
+                    st.success("Saved -- it'll attach to your next message below.")
+                else:
+                    st.warning("The canvas is empty -- draw something first.")
 
 if st.session_state.get("pending_drawing_path"):
     st.caption(f"📎 Drawing ready to attach: {Path(st.session_state.pending_drawing_path).name}")
@@ -909,6 +947,37 @@ if chat_value or quick_start_text:
         elif page_calls:
             st.session_state.pending_plan = None
 
+        # Whenever THIS turn touches a saved character, remember its name
+        # in session_state (not just locally) -- see active_character_name's
+        # init comment above for why: the character-selection call and the
+        # page-generation calls are usually in DIFFERENT turns (the
+        # plan-approval pause splits them), and by the time the later turn
+        # finishes, Strands' sliding-window trimming may have already
+        # dropped the earlier turn's call from agent.messages, so it can't
+        # be recovered by searching the trace at that point either.
+        char_calls = [t for t in this_turn if t["name"] in ("save_character", "save_character_from_photo", "get_saved_character")]
+        if char_calls:
+            char_input, char_output = char_calls[-1]["input"], char_calls[-1]["output"]
+            seen_name = char_input.get("character_name") or (char_output or {}).get("character_name")
+            if seen_name:
+                st.session_state.active_character_name = seen_name
+
+        # Backfill the saved character's portrait once real art exists --
+        # save_character (the text-description path, the common case)
+        # never sets reference_image_path, only save_character_from_photo
+        # does, so the Characters gallery above showed a placeholder
+        # monogram forever even after the agent had already drawn this
+        # character beautifully. First successful page/cover this
+        # character ever gets "sticks" as its portrait.
+        char_name = st.session_state.get("active_character_name")
+        if char_name and page_calls:
+            first_page_path = (page_calls[0].get("output") or {}).get("image_path")
+            if first_page_path and os.path.exists(first_page_path):
+                existing = memory.get_character("default_family", char_name)
+                if existing and not existing.get("reference_image_path"):
+                    existing["reference_image_path"] = first_page_path
+                    memory.save_character("default_family", char_name, existing)
+
         # A reply with real pages in it becomes a Story Library card --
         # checked on the reply text itself (not tool_calls), so this
         # still works if a future page/revision message adds pages to
@@ -928,11 +997,12 @@ if chat_value or quick_start_text:
 
     st.session_state.history.append(("assistant", response_text))
 
-    # The pending_plan editable form is rendered near the TOP of the
-    # script (right after chat history, before this whole turn-processing
-    # block runs) -- setting pending_plan above, in THIS run, doesn't
-    # retroactively draw it below. Rerun so the very next script pass
-    # draws it immediately instead of only after some unrelated later
-    # interaction.
-    if st.session_state.get("pending_plan"):
+    # The pending_plan form, Characters gallery, and Story Library are
+    # all rendered near the TOP of the script -- before this whole
+    # turn-processing block runs -- so setting/appending to any of them
+    # here, this late, doesn't retroactively draw them in THIS pass.
+    # Rerun so the very next script pass shows the plan, the new library
+    # card, or a just-enriched character portrait immediately, instead
+    # of only after some unrelated later interaction.
+    if st.session_state.get("pending_plan") or page_calls:
         st.rerun()

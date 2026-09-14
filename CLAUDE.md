@@ -208,3 +208,22 @@ exactly like an uploaded file. If this ever regresses again after a
 `streamlit`/`streamlit-drawable-canvas` version bump, don't assume it
 still works -- repeat this same check (isolated test app, real mouse
 strokes via Playwright, inspect the saved file) before trusting it.
+
+**It regressed (2026-09-14).** `requirements.txt` pins no upper bound on
+either package, and a routine local/Cloud reinstall pulled a
+`streamlit-drawable-canvas==0.13.0` whose own `__init__.py` now calls
+`st.components.v2.component(...)` unconditionally -- confirmed broken
+(reproduced directly) against every Streamlit version tried, 1.40
+through 1.63: `StreamlitAPIException: Component
+'streamlit-drawable-canvas.streamlit_drawable_canvas' must be declared
+in pyproject.toml with asset_dir to use file-backed css`, raised at
+**import time**, i.e. `from streamlit_drawable_canvas import st_canvas`
+alone crashes before any UI code runs. No version combination tried
+fixed it -- this looks like a real packaging bug in the current PyPI
+release, not a pin problem. Since a top-level import crash would have
+taken the *entire app* down (not just the drawing feature) on the next
+cold start/redeploy, `app.py` now wraps that import in `try/except`
+(`CANVAS_AVAILABLE` flag) and the "Draw a sketch" expander shows a
+plain "upload a photo instead" fallback message when it's unavailable,
+instead of crashing. Re-run the same verification checklist above
+before ever removing that guard.

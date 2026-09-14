@@ -8,4 +8,4 @@ google-genai>=1.67.0  # strands-agents' own "gemini" extra floor -- GeminiModel 
 python-dotenv>=1.0.0
 pyyaml>=6.0
 pytest>=8.0.0
-streamlit-drawable-canvas>=0.13.0  # in-browser sketch canvas -- verified against this streamlit version before adding (see CLAUDE.md)
+streamlit-drawable-canvas>=0.13.0  # in-browser sketch canvas; app.py imports this defensively (CANVAS_AVAILABLE) and degrades gracefully if it fails to load -- see CLAUDE.md, this package broke against current Streamlit on 2026-09-14
