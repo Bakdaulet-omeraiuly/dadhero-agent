@@ -1,0 +1,12 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+supabase>=2.9.0
+pyjwt>=2.9.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+pytest>=8.0.0
+httpx>=0.27.0
+
+# Reuses the existing dadhero/ package (Strands agent, tools, providers) --
+# install DadHero-Agent's own requirements too:
+-r ../requirements.txt

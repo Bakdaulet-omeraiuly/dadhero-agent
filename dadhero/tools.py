@@ -15,7 +15,8 @@ from typing import List, Optional
 
 from strands import tool
 
-from dadhero import continuity, memory
+from dadhero import continuity, storage
+from dadhero import memory_backend as memory
 from dadhero.image_providers import get_provider
 from dadhero.models import DEFAULT_ART_STYLE, CharacterBible
 from dadhero.safety import check_age_appropriateness as _check_age_appropriateness
@@ -126,10 +127,18 @@ def save_character_from_photo(
     except Exception as e:  # noqa: BLE001
         return {"status": "error", "content": [{"text": f"Stylizing the photo failed: {e}"}]}
 
+    # reference_image_path stays a LOCAL path -- that's what the image
+    # provider reads bytes from when chaining consistency across later
+    # generate_page_image calls (see image_providers.GeminiImageProvider).
+    # image_url is the separate, storage-persisted URL for anything that
+    # needs to actually display or outlive this local disk (a deployed
+    # backend, a UI) -- identical to result.path in local/Streamlit mode.
+    image_url = storage.persist(result.path)
+
     bible = CharacterBible(
         character_name=character_name,
         relationship=relationship,
-        appearance=f"as shown in the stylized reference portrait at {result.path}",
+        appearance=f"as shown in the stylized reference portrait at {image_url}",
         personality_traits=personality_traits or [],
         role_in_story=role_in_story,
         art_style=DEFAULT_ART_STYLE,
@@ -144,6 +153,7 @@ def save_character_from_photo(
         "art_style": bible.art_style,
         "prompt_fragment": bible.prompt_fragment(),
         "reference_image_path": result.path,
+        "image_url": image_url,
     }
     memory.save_character(family_id, character_name, record)
     return record
@@ -172,7 +182,12 @@ def stylize_drawing(drawing_path: str, output_name: str, style_note: str = "") -
         result = provider.generate(prompt, output_name=output_name, reference_image_path=drawing_path)
     except Exception as e:  # noqa: BLE001
         return {"status": "error", "content": [{"text": f"Stylizing the drawing failed: {e}"}]}
-    return {"image_path": result.path, "provider": result.provider, "note": result.note}
+    return {
+        "image_path": result.path,
+        "image_url": storage.persist(result.path),
+        "provider": result.provider,
+        "note": result.note,
+    }
 
 
 @tool
@@ -190,7 +205,13 @@ def generate_page_image(
         character_prompt_fragment: The exact, unchanged prompt_fragment string returned by save_character/get_saved_character -- reused verbatim so the character looks the same across pages.
         page_slug: A short unique filename-safe id for this page, e.g. "space_dad_page3".
         caption_text: This page's exact narration/dialogue text. Pass it every time -- it gets rendered INTO the image as a clean comic-style caption or speech bubble, not shown separately, so the page looks like a real comic panel. Keep it short (1-2 sentences); long text renders poorly.
-        reference_image_path: The file path of a previously generated page's image (usually page 1's portrait) to condition on for visual consistency. Omit only for the very first image of a character.
+        reference_image_path: The file path of a previously generated page's image (usually page 1's portrait) to condition on for visual consistency -- ALWAYS use the image_path field from a prior result here, never image_url (that may be a remote URL the image provider can't read bytes from). Omit only for the very first image of a character.
+
+    Returns image_path (local file -- pass this as reference_image_path on
+    later calls) and image_url (what to actually show the parent -- on the
+    local/Streamlit backend these are the same value; on the platform
+    backend image_url is a persisted Storage URL and image_path is a
+    same-server temp file that won't survive a redeploy).
     """
     provider = get_provider()
     prompt = f"{character_prompt_fragment}\n\nScene: {scene_description}"
@@ -205,7 +226,12 @@ def generate_page_image(
         result = provider.generate(prompt, output_name=page_slug, reference_image_path=reference_image_path)
     except Exception as e:  # noqa: BLE001 -- surface any provider failure to the agent, not a crash
         return {"status": "error", "content": [{"text": f"Image generation failed: {e}"}]}
-    return {"image_path": result.path, "provider": result.provider, "note": result.note}
+    return {
+        "image_path": result.path,
+        "image_url": storage.persist(result.path),
+        "provider": result.provider,
+        "note": result.note,
+    }
 
 
 @tool

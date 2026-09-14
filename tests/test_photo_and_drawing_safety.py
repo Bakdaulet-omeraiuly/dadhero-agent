@@ -43,7 +43,11 @@ def test_save_character_from_photo_proceeds_for_an_adult_relationship(tmp_path, 
     # Force mock provider regardless of environment so this test never
     # depends on network/API keys.
     monkeypatch.setattr(tools_mod, "get_provider", lambda: __import__("dadhero.image_providers", fromlist=["MockImageProvider"]).MockImageProvider())
-    monkeypatch.setattr(tools_mod.memory, "MEMORY_PATH", tmp_path / "family_memory.json")
+    # tools.py's `memory` symbol is memory_backend (local JSON by default) --
+    # patch the actual local-JSON module's path, not memory_backend itself.
+    import dadhero.memory as local_memory
+
+    monkeypatch.setattr(local_memory, "MEMORY_PATH", tmp_path / "family_memory.json")
 
     import dadhero.image_providers as ip
 

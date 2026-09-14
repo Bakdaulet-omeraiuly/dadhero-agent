@@ -42,24 +42,45 @@ chat UI, alongside plain CRUD resources (characters/stories/pages/etc.)
 for a dashboard/gallery view; `check_story_fact`/`check_page_safety` stay
 internal (folded into `POST .../pages`), never public endpoints.
 
-## Planned rebuild (platform-with-cabinet format, not yet started)
+## Platform rebuild (platform-with-cabinet format) -- backend built, frontend not started
 
 Per the vibe-coder-stack lesson's classification, a production version of
 DadHero is a "platform with cabinet," not a public SEO surface -- the app
 itself needs no SEO (CSR is fine), only a separate public landing page
 would (SSG/Astro/Cloudflare Pages, if built).
 
-- Frontend: React + Vite (CSR) + TanStack Router/Query/Form.
-- Backend: **stays Python (FastAPI)**, not the lesson's default
-  Hono+Bun -- `dadhero/agent.py`'s Strands Agent and tools are Python;
-  rewriting them in TS would discard tested, working code for no benefit.
-- DB/Auth: self-host Supabase (Postgres + Auth + RLS), replacing
-  `data/family_memory.json` and its hardcoded single `default_family`.
-- File storage: Supabase Storage, replacing `data/generated_pages/`.
+**Built** (`backend/`, see `backend/README.md`): FastAPI implementing
+`docs/api/openapi.yaml`'s 12 routes, reusing `dadhero/` (the same Strands
+agent/tools/Gemini provider the Streamlit demo runs) unchanged. Three new
+pluggable backends selected by env var, mirroring `image_providers.py`'s
+existing pattern:
+  - `dadhero/memory_backend.py` -- local JSON (`memory.py`, Streamlit) or
+    Supabase Postgres (`memory_supabase.py`, platform), selected by
+    `DADHERO_MEMORY_BACKEND`.
+  - `dadhero/storage.py` -- local disk passthrough or Supabase Storage
+    upload, by `DADHERO_STORAGE_BACKEND`.
+  - `dadhero/request_context.py` -- a ContextVar holding the
+    server-verified `family_id` (never trusted from an LLM tool-call
+    argument) and the per-request, user-JWT-scoped Supabase client that
+    makes Postgres RLS the actual enforcement boundary.
+- Backend stays **Python (FastAPI)**, not the lesson's default Hono+Bun --
+  rewriting the Strands agent/tools in TS would discard tested, working
+  code for no benefit.
+- Schema: `supabase/migrations/0001_init.sql` (characters, places,
+  stories, pages, memories, progress_updates, conversation_messages, all
+  RLS-scoped to `auth.uid()`).
+- **UNTESTED against a live Supabase project** -- backend/README.md has
+  the verification checklist (auth round-trip, RLS actually isolates two
+  users, Storage signed-URL access, conversation persistence across a
+  restart). Do not claim this works in a demo before running it.
 - 152-FZ note: only binds if there are Russian Federation citizen users;
   confirm the target audience before deciding server location for that
   data specifically.
 
-This is a post-hackathon-submission roadmap item, not scoped for the
-current Streamlit prototype, which is the actual submission and already
-verified end-to-end (see README).
+**Not built:** the React frontend (nothing consumes this API yet),
+deployment, and the `pages` table gap noted in
+`backend/routers/stories.py`.
+
+**The Streamlit app (`../app.py`) is untouched and remains the verified,
+working hackathon submission** -- this backend is new, additive surface
+area, not a replacement, until/unless the frontend reaches parity.

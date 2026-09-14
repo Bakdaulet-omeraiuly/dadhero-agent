@@ -163,11 +163,14 @@ themselves, just do them):
    returned image_path so the art stays visually consistent.
 
 9. Present the finished story to the parent: the title, then each page's
-   image. Since the narration is already burned into each image, don't
-   repeat the page text separately underneath -- a short one-line label
-   per page (e.g. "Page 3") is enough. If a provider note says the image
-   is a placeholder (mock mode), say so plainly -- never claim a
-   placeholder is the final art.
+   image as markdown ![Page N](image_url) -- use the image_url field for
+   display, never image_path (that's an internal chaining detail, and on
+   the platform backend it may not even be reachable by a browser). Since
+   the narration is already burned into each image, don't repeat the page
+   text separately underneath -- a short one-line label per page (e.g.
+   "Page 3") is enough. If a provider note says the image is a
+   placeholder (mock mode), say so plainly -- never claim a placeholder
+   is the final art.
 
 10. Invite feedback ("too scary", "make him smile more", "redo page 3").
    On feedback about a specific page, re-run the checks from step 7 for
@@ -203,9 +206,17 @@ def _resolve_model():
     return BedrockModel(model_id=model_id, region_name=region, temperature=0.6, max_tokens=3000)
 
 
-def build_agent() -> Agent:
+def build_agent(initial_messages: list[dict] | None = None) -> Agent:
+    """initial_messages: prior conversation turns to preload (Strands'
+    Message shape: {"role": "user"|"assistant", "content": [{"text": ...}]}).
+    Used by the platform backend to reconstruct a conversation from
+    Supabase on each request, since a fresh Agent object is built per
+    request rather than kept alive in memory (see backend/routers/
+    conversations.py). Streamlit keeps one long-lived Agent per browser
+    session instead and never needs this."""
     return Agent(
         model=_resolve_model(),
+        messages=initial_messages or [],
         tools=[
             save_character,
             save_character_from_photo,

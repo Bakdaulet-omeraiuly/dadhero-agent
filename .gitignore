@@ -1,9 +1,13 @@
 .venv/
+backend/.venv/
+node_modules/
+frontend/dist/
 .agents/
 .claude/skills/
 __pycache__/
 *.pyc
 .env
+backend/.env
 data/family_memory.json
 data/generated_pages/
 data/uploads/
