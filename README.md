@@ -1,13 +1,27 @@
 # DadHero
 
-> Tell it your idea. It turns a family member into your child's comic-book hero.
+> Turns a child's real life -- their fears, milestones, and memories -- into personalized illustrated stories that grow with them.
 
-An agentic personalized-comic generator built on **Strands Agents** +
-**Amazon Bedrock**, for the "Agents for Humans" (Strands Agents) hackathon,
-Everyday Agents track. A parent describes an idea; the agent builds a
-consistent illustrated character, plans a short story arc, generates each
-page, and refines on feedback -- across sessions, remembering the character
-so they don't need re-describing next time.
+Not a comic generator. An agentic **Story Universe companion** built on
+**Strands Agents** + **Amazon Bedrock**, for the "Agents for Humans"
+(Strands Agents) hackathon, Everyday Agents track. Parents already exist
+who describe a theme and get a personalized illustrated book back --
+that's table stakes, and DadHero does it well (consistent character art,
+lesson hidden in the plot, feedback-driven revision). What isn't table
+stakes:
+
+- A **real problem** ("she's scared of school") becomes a goal-oriented
+  story, and a **later report** ("she walked in by herself today!") gets
+  matched back to that exact story and goal -- Before -> During -> After,
+  not a one-shot generation.
+- A **real event or memory** ("today he lost his first tooth", "we
+  visited grandma last summer") gets preserved and, with permission,
+  fictionalized -- imagination added, the real kernel kept -- instead of
+  either ignored or replayed literally.
+- Every character, place, memory, and lesson accumulates into one
+  **Story Universe** per family (`dadhero/memory.py`), so a new story can
+  reuse a saved place, avoid repeating a theme, or reference an earlier
+  adventure.
 
 ## The safety decision this product is built around
 
@@ -156,10 +170,11 @@ before Gemini access does, Titan Image is the documented fallback path
   (concerning-term list + length-vs-age heuristic) run on every page's
   text before it's shown, instead of just trusting the model's judgment
   silently.
-- **`dadhero/tools.py`** -- 9 Strands `@tool` functions: `save_character`,
+- **`dadhero/tools.py`** -- 12 Strands `@tool` functions: `save_character`,
   `save_character_from_photo`, `stylize_drawing`, `get_saved_character`,
-  `generate_page_image`, `get_family_memory`, `check_story_fact`,
-  `check_page_safety`, `record_finished_story`. Story
+  `save_place`, `generate_page_image`, `get_family_memory`,
+  `check_story_fact`, `check_page_safety`, `record_family_memory`,
+  `record_progress`, `record_finished_story`. Story
   *planning* (the page-by-page outline, and mapping the parent's intention
   to a story objective) is deliberately NOT a tool -- like StoryMatch's
   Narrative Fingerprint extraction, it's the agent's own reasoning, because
@@ -179,6 +194,57 @@ before Gemini access does, Titan Image is the documented fallback path
 - **`tests/`** -- pytest for everything that doesn't need a live model
   (CharacterBible formatting, memory round-trips, mock image provider,
   agent tool wiring). Run with `python -m pytest tests/ -q`.
+
+## Verified: Before -> During -> After, and real-event -> memory
+
+These are the two mechanics that actually justify calling this a
+"companion" instead of a comic generator. Both run for real, Anthropic
+API, mock images (image quality is separately proven above -- these
+transcripts are about the memory/reasoning layer):
+
+**Before -> During -> After** (two separate agent processes, simulating
+different days, sharing only `data/family_memory.json`):
+
+> **Parent (day 1):** "My daughter Aisha (age 6, curly hair, always wears
+> her yellow raincoat) has been really scared of going to school lately.
+> Can you make a short 3-page comic about her that helps with this?"
+
+The agent produced *"Aisha's Yellow Raincoat Adventure"* and called
+`record_finished_story(..., goal="confidence at school")`.
+
+> **Parent (day 2, brand-new process, zero conversation history):**
+> "Update: Aisha actually walked into school by herself today without
+> crying!"
+
+> **DadHero:** *"That's wonderful! That's a huge step for Aisha — walking
+> in by herself without crying is exactly what the Yellow Raincoat story
+> was hoping for..."*
+
+It called `get_family_memory` cold, found the earlier goal-oriented story,
+and matched the report back to it by name -- with no shared conversation
+context, only the persisted Story Universe. `family_memory.json` after
+both turns:
+
+```json
+"stories": [{"title": "Aisha's Yellow Raincoat Adventure", "goal": "confidence at school", ...}],
+"lessons_taught": ["confidence at school"],
+"progress": [{"related_to": "Aisha", "update": "...walked into school by herself...", "story_title": "Aisha's Yellow Raincoat Adventure"}]
+```
+
+**Real event -> memory -> offered fictionalization:**
+
+> **Parent:** "Today my son Timur (age 5, spiky black hair, loves his blue
+> dinosaur backpack) lost his first tooth! It was so exciting."
+
+> **DadHero:** *"What a milestone! ... Would you like me to turn this into
+> tonight's story? I could create an adventure where Timur discovers
+> something magical about his lost tooth — maybe he becomes a Tooth
+> Knight... We'd keep the real moment (the lost tooth!) at the heart of
+> it, but add some imagination and fun around it."*
+
+`record_family_memory` fired before the agent even asked permission to
+fictionalize it -- the real event is preserved either way, not only if
+the parent says yes.
 
 ## Verified end-to-end (real transcript, Anthropic API, mock images)
 
@@ -271,6 +337,15 @@ Reset family memory / generated images between demo runs:
 
 ## What's deliberately not built (cut for time)
 
+- **Voice input** -- Streamlit's `chat_input(accept_audio=True)` and
+  Gemini's native audio understanding make this technically reachable
+  (Gemini can transcribe + interpret emotional tone from audio in one
+  call, no separate STT step), but it adds a real testing surface
+  (recording, upload, an extra model call path) for a modality the judged
+  reasoning doesn't actually depend on -- the agent's handling of "she's
+  upset her friend didn't invite her to play" is the same demonstration
+  whether typed or spoken. Documented as the next thing to add, not
+  attempted under time pressure.
 - Multiple children / multiple simultaneous heroes in one story.
 - Export to a shareable PDF/printable comic layout -- pages currently exist
   as separate PNG files plus markdown text, not composited into panels.
@@ -279,22 +354,30 @@ Reset family memory / generated images between demo runs:
   further but adds a generation step and cost.
 - The Bedrock Titan Image fallback provider mentioned above -- only sketched
   in this README, not implemented.
+- A UI "Parent Control Layer" (goal/tone/avoid checkboxes, age slider) --
+  the underlying constraints are already respected via plain-text
+  instruction (say "avoid scary scenes" and the agent does), just not yet
+  exposed as a dedicated sidebar form.
 
 ## Pitch (for the submission form)
 
 > Every parent has told their kid a bedtime story where they're the hero.
-> DadHero turns that into something the child can see: describe an idea --
-> or just an intention, like "he's nervous about starting school" -- and it
-> maps that to a story objective, builds a consistent illustrated character
-> (any family member, including the child, always from a text description,
-> never a photo), plans a page-by-page arc that shows the lesson instead of
-> stating it, checks its own continuity and age-appropriateness on every
-> page, and remembers the character for next time.
+> DadHero turns that into something real: describe an idea, a worry, or
+> just what happened today -- "she's nervous about starting school," "he
+> lost his first tooth" -- and it maps that to a story objective, builds a
+> consistent illustrated character (any family member, including the
+> child, always from a text description or the child's own drawing, never
+> a photo of a minor), plans a page-by-page arc that shows the lesson
+> instead of stating it, checks its own continuity and age-appropriateness
+> on every page, and remembers -- across sessions -- the character, the
+> goal, and whether it actually helped.
 
 ## Credit
 
-The child-safety reframe (adult-hero-by-default) and initial scope were
-this project's own decision; the parent-intention framing, continuity
-fact-checking, and explicit safety-tool ideas were adapted from a
-teammate's `StorySprout_Hackathon_Idea.md` design doc, with the photo-based
-child depiction it proposed deliberately left out for the reasons above.
+The child-safety reframe (adult-hero-by-default, later refined to
+photo-vs-drawing) and initial scope were this project's own decisions; the
+parent-intention framing, continuity fact-checking, explicit safety-tool
+ideas, and the Before -> During -> After / Story Universe / real-event
+mechanics were adapted from a teammate's `StorySprout_Hackathon_Idea.md`
+design doc, with the photo-based child depiction it proposed deliberately
+left out for the reasons above.

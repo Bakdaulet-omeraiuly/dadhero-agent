@@ -47,7 +47,8 @@ def test_story_templates_have_beats():
 def test_memory_round_trip(tmp_path, monkeypatch):
     monkeypatch.setattr(memory, "MEMORY_PATH", tmp_path / "family_memory.json")
 
-    assert memory.get_family_profile("fam1") == {"characters": {}, "stories": []}
+    empty = memory.get_family_profile("fam1")
+    assert empty["characters"] == {} and empty["stories"] == []  # full schema covered in test_story_universe.py
 
     saved = memory.save_character("fam1", "Papa Nurlan", {"appearance": "red hoodie"})
     assert saved["appearance"] == "red hoodie"
@@ -60,7 +61,8 @@ def test_memory_round_trip(tmp_path, monkeypatch):
     assert profile["stories"][0]["title"] == "Space Star"
 
     memory.reset_family("fam1")
-    assert memory.get_family_profile("fam1") == {"characters": {}, "stories": []}
+    reset = memory.get_family_profile("fam1")
+    assert reset["characters"] == {} and reset["stories"] == []
 
 
 def test_mock_image_provider_writes_a_real_file(tmp_path, monkeypatch):

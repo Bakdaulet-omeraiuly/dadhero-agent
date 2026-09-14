@@ -13,10 +13,13 @@ EXPECTED_TOOLS = {
     "save_character_from_photo",
     "stylize_drawing",
     "get_saved_character",
+    "save_place",
     "generate_page_image",
     "get_family_memory",
     "check_story_fact",
     "check_page_safety",
+    "record_family_memory",
+    "record_progress",
     "record_finished_story",
 }
 

@@ -210,15 +210,72 @@ def generate_page_image(
 
 @tool
 def get_family_memory(family_id: str = "default_family") -> dict:
-    """Read this family's saved characters and past story titles/themes.
+    """Read this family's whole Story Universe: saved characters, places, past
+    stories (with any goal they targeted), real memories shared so far, and
+    progress reported back on earlier goal-oriented stories.
 
-    Call this near the start of a conversation so you can offer to reuse a
-    saved character or avoid repeating a theme used recently.
+    Call this near the start of every conversation. Use it to: offer to
+    reuse a saved character/place, avoid repeating a theme, check whether a
+    shared memory was already turned into a story, and check the
+    "progress" list for a goal you should follow up on (a parent reporting
+    "he shared today" belongs to the same goal as an earlier story -- see
+    record_progress).
 
     Args:
         family_id: Identifier for this family (default "default_family").
     """
     return memory.get_family_profile(family_id)
+
+
+@tool
+def save_place(place_name: str, description: str, family_id: str = "default_family") -> dict:
+    """Save a recurring place in this family's Story Universe (a home, a grandparent's house, a magic forest introduced in a story) so future stories can be set there consistently.
+
+    Args:
+        place_name: Short name for the place (e.g. "Grandma's House", "the Magic Forest").
+        description: A few concrete visual details, reused verbatim in scene_description when a story is set there.
+        family_id: Identifier for this family (default "default_family").
+    """
+    return memory.save_place(family_id, place_name, description)
+
+
+@tool
+def record_family_memory(memory_text: str, family_id: str = "default_family", used_in_story: Optional[str] = None) -> dict:
+    """Save a real family memory or event the parent shared (a trip, a milestone, something that happened today), so it can seed a future story or isn't asked about twice.
+
+    Call this whenever a parent describes something real that happened,
+    even before deciding whether to turn it into a story this turn.
+
+    Args:
+        memory_text: The real event/memory in the parent's own words (or a faithful short summary).
+        family_id: Identifier for this family (default "default_family").
+        used_in_story: This memory's story title, once one has been made from it -- omit until then.
+    """
+    memory.record_memory(family_id, memory_text, used_in_story)
+    return {"status": "success", "content": [{"text": "Memory saved."}]}
+
+
+@tool
+def record_progress(
+    related_to: str,
+    update_text: str,
+    story_title: Optional[str] = None,
+    family_id: str = "default_family",
+) -> dict:
+    """Record a parent's follow-up report on how a goal-oriented story landed in real life -- the 'After' in Before -> During -> After.
+
+    Call this when a parent reports back on behavior related to a
+    character/goal from an earlier story (e.g. "he actually shared his
+    toy today"), not for routine feedback on the story itself.
+
+    Args:
+        related_to: The character name or goal this update relates to (e.g. "Arman", "sharing").
+        update_text: What the parent reported, in their own words.
+        story_title: The earlier story this follows up on, if known.
+        family_id: Identifier for this family (default "default_family").
+    """
+    memory.record_progress(family_id, related_to, update_text, story_title)
+    return {"status": "success", "content": [{"text": "Progress recorded -- thanks for the update."}]}
 
 
 @tool
@@ -260,6 +317,7 @@ def record_finished_story(
     title: str,
     idea: str,
     template_key: str,
+    goal: Optional[str] = None,
     family_id: str = "default_family",
 ) -> dict:
     """Record a completed story so future conversations know what's already been made.
@@ -268,7 +326,8 @@ def record_finished_story(
         title: The story's title.
         idea: The parent's original one-line idea for the story.
         template_key: Which story shape was used (e.g. "problem_helper_solution", "small_adventure", "bedtime_wind_down").
+        goal: The behavior/lesson this story targeted, if the parent's intention was goal-oriented (e.g. "sharing", "confidence at school") -- set this so a later parent report can be matched back to it via record_progress. Omit for a pure-fun story with no target lesson.
         family_id: Identifier for this family (default "default_family").
     """
-    memory.record_story(family_id, title, idea, template_key)
+    memory.record_story(family_id, title, idea, template_key, goal)
     return {"status": "success", "content": [{"text": f"Recorded '{title}'."}]}
