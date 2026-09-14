@@ -9,14 +9,16 @@ Providers:
     be built and tested end-to-end today, while the real image API is
     blocked by billing/org policy. This is not a stub that returns nothing
     -- app.py/cli_demo.py render its output exactly like a real image.
-  - GeminiImageProvider: real "Nano Banana" (gemini-3-pro-image) backend.
-    WRITTEN BUT NOT YET VERIFIED AGAINST A LIVE RESPONSE -- the API key
-    available during development hit a billing/org-policy wall before a
-    single real image came back (see README's status section). The request
-    shape below follows Gemini's documented image-output + multi-turn
-    image-editing pattern; confirm it against a real response before
-    trusting it in a demo, and adjust generationConfig/field names if the
-    API has moved.
+  - GeminiImageProvider: real "Nano Banana" (gemini-3-pro-image) backend,
+    using the official `google-genai` SDK. The call shape and response
+    parsing (candidates[0].content.parts[i].inline_data.data) ARE verified
+    -- confirmed live: text generation succeeds, and an image request
+    reaches the model and fails with a clean, expected 429 quota error
+    (free tier gives image models 0 quota until billing is enabled), not a
+    shape/parsing error. What's still unverified is the actual image
+    bytes/quality and multi-turn reference-image consistency, since no
+    account with image billing enabled was available during development
+    -- see README's status section before trusting this in a live demo.
 
 Select the active provider via DADHERO_IMAGE_PROVIDER=mock|gemini (default
 mock, so a fresh checkout runs without any API key).
@@ -24,7 +26,6 @@ mock, so a fresh checkout runs without any API key).
 
 from __future__ import annotations
 
-import base64
 import os
 import textwrap
 from abc import ABC, abstractmethod
@@ -109,10 +110,13 @@ class GeminiImageProvider(ImageProvider):
     """Nano Banana (gemini-3-pro-image) -- UNVERIFIED, see module docstring."""
 
     def __init__(self, api_key: str | None = None, model_id: str = "gemini-3-pro-image"):
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
-        self.model_id = model_id
-        if not self.api_key:
+        from google import genai
+
+        api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
             raise RuntimeError("GEMINI_API_KEY not set for GeminiImageProvider.")
+        self.client = genai.Client(api_key=api_key)
+        self.model_id = model_id
 
     def generate(
         self,
@@ -121,53 +125,41 @@ class GeminiImageProvider(ImageProvider):
         output_name: str,
         reference_image_path: str | None = None,
     ) -> GeneratedImage:
-        import requests
+        from google.genai import types
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         path = OUTPUT_DIR / f"{output_name}.png"
 
-        parts: list[dict] = []
+        contents: list = []
         if reference_image_path and Path(reference_image_path).exists():
             with open(reference_image_path, "rb") as f:
-                ref_b64 = base64.b64encode(f.read()).decode("ascii")
-            parts.append({"inline_data": {"mime_type": "image/png", "data": ref_b64}})
-            parts.append(
-                {
-                    "text": (
-                        "Using the exact same character shown in this reference image "
-                        f"(same face, hair, outfit, art style), draw a new scene: {prompt}"
-                    )
-                }
+                contents.append(types.Part.from_bytes(data=f.read(), mime_type="image/png"))
+            contents.append(
+                "Using the exact same character shown in this reference image "
+                f"(same face, hair, outfit, art style), draw a new scene: {prompt}"
             )
         else:
-            parts.append({"text": prompt})
+            contents.append(prompt)
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model_id}:generateContent?key={self.api_key}"
-        )
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {"responseModalities": ["IMAGE"]},
-        }
-        resp = requests.post(url, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        response = self.client.models.generate_content(model=self.model_id, contents=contents)
 
-        candidates = data.get("candidates", [])
+        candidates = response.candidates or []
         if not candidates:
-            raise RuntimeError(f"Gemini returned no candidates: {data}")
-        image_b64 = None
-        for part in candidates[0].get("content", {}).get("parts", []):
-            inline = part.get("inlineData") or part.get("inline_data")
-            if inline and inline.get("data"):
-                image_b64 = inline["data"]
+            raise RuntimeError(f"Gemini returned no candidates for prompt: {prompt!r}")
+
+        image_bytes = None
+        for part in candidates[0].content.parts:
+            inline = getattr(part, "inline_data", None)
+            if inline and inline.data:
+                image_bytes = inline.data
                 break
-        if not image_b64:
-            raise RuntimeError(f"Gemini response had no image part: {data}")
+        if image_bytes is None:
+            raise RuntimeError(
+                f"Gemini response had no image part (got: {[type(p).__name__ for p in candidates[0].content.parts]})"
+            )
 
         with open(path, "wb") as f:
-            f.write(base64.b64decode(image_b64))
+            f.write(image_bytes)
 
         return GeneratedImage(
             path=str(path),

@@ -50,11 +50,18 @@ placeholder PNG locally (no network, no cost) -- the entire agent loop
 (character bible -> story plan -> per-page generation, chaining a
 reference image forward for consistency -> feedback -> single-page
 regeneration -> family memory) was built and verified end-to-end against a
-live model using it. `GeminiImageProvider` (Nano Banana /
-`gemini-3-pro-image`, chosen specifically for its reference-image character
-consistency) is fully written but **has not yet produced a single real
-image** -- confirm its request shape against an actual response before
-trusting it in a demo. See that file's docstring for exactly what to check.
+live model using it.
+
+`GeminiImageProvider` (Nano Banana / `gemini-3-pro-image`, chosen
+specifically for its reference-image character consistency) uses the
+official `google-genai` SDK, and its call/response shape IS confirmed live:
+a text call through the same SDK succeeds, and an image call reaches the
+model and returns a clean, expected `429 RESOURCE_EXHAUSTED` (free tier =
+0 quota for image models until billing is enabled) -- not a parsing or
+shape error. What's still unverified is the actual generated image
+quality and multi-turn character consistency, since no account with image
+billing enabled was available during development. See "Before the real
+demo" below for the exact two-image test to run once that's unblocked.
 
 ## Why Gemini "Nano Banana" over Bedrock's image models for this specific job
 
@@ -171,10 +178,8 @@ Reset family memory / generated images between demo runs:
 3. Generate a second image passing `reference_image_path=result.path` with
    a different scene, and actually look at both side by side -- confirm
    the character looks like the same person before trusting this in a live
-   demo. If the response shape differs from what `image_providers.py`
-   expects (field names, missing `inlineData`, etc.), fix it there --
-   that's the one part of this codebase written without being able to see
-   a real response.
+   demo. The request/response plumbing is already confirmed correct (see
+   Status above); this step is purely about judging real output quality.
 
 ## What's deliberately not built (cut for time)
 
