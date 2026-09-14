@@ -22,9 +22,21 @@ from strands import tool
 from dadhero import continuity, storage, vision_check
 from dadhero import memory_backend as memory
 from dadhero.image_providers import get_provider
-from dadhero.models import DEFAULT_ART_STYLE, CharacterBible
+from dadhero.models import ART_STYLES, DEFAULT_ART_STYLE, CharacterBible
 from dadhero.safety import check_age_appropriateness as _check_age_appropriateness
 from dadhero.safety import PHOTO_SAFETY_RULE, is_minor_relationship
+
+
+def _resolve_art_style(art_style: Optional[str]) -> str:
+    """art_style arrives as one of ART_STYLES' LABELS (e.g. "Watercolor")
+    -- the agent shouldn't have to reproduce a whole art-direction prompt
+    verbatim, just pick from the list agent.py shows it. Falls back to
+    treating an unrecognized value as a literal style description
+    (defensive, not expected in practice) rather than silently ignoring
+    it, and to the default when nothing was passed."""
+    if not art_style:
+        return DEFAULT_ART_STYLE
+    return ART_STYLES.get(art_style, art_style)
 
 
 @tool
@@ -35,6 +47,7 @@ def save_character(
     personality_traits: Optional[List[str]] = None,
     role_in_story: str = "",
     family_id: str = "default_family",
+    art_style: Optional[str] = None,
 ) -> dict:
     """Save a character's appearance so it can be reused consistently across pages and future stories.
 
@@ -49,6 +62,7 @@ def save_character(
         personality_traits: A few traits that should show in expression/pose (e.g. ["brave", "goofy", "gentle"]).
         role_in_story: The "costume"/theme for this story (e.g. "astronaut", "knight", "firefighter"). Leave empty for a realistic depiction.
         family_id: Identifier for this family (default "default_family").
+        art_style: A label from dadhero.models.ART_STYLES (e.g. "Watercolor", "Comic book") if the parent picked a style in settings -- pass the label; this function looks up the actual art-direction text. Omit for the default warm storybook look.
     """
     bible = CharacterBible(
         character_name=character_name,
@@ -56,7 +70,7 @@ def save_character(
         appearance=appearance,
         personality_traits=personality_traits or [],
         role_in_story=role_in_story,
-        art_style=DEFAULT_ART_STYLE,
+        art_style=_resolve_art_style(art_style),
     )
     record = {
         "character_name": bible.character_name,
@@ -101,6 +115,7 @@ def save_character_from_photo(
     personality_traits: Optional[List[str]] = None,
     role_in_story: str = "",
     family_id: str = "default_family",
+    art_style: Optional[str] = None,
 ) -> dict:
     """Save a character built from an uploaded reference photo, stylized into the comic's art style.
 
@@ -118,6 +133,7 @@ def save_character_from_photo(
         personality_traits: A few traits that should show in expression/pose.
         role_in_story: The "costume"/theme for this story (e.g. "astronaut"). Leave empty for a realistic depiction.
         family_id: Identifier for this family (default "default_family").
+        art_style: A label from dadhero.models.ART_STYLES if the parent picked a style in settings -- pass the label; this function looks up the actual art-direction text. Omit for the default warm storybook look.
     """
     if is_minor_relationship(relationship):
         return {
@@ -126,12 +142,13 @@ def save_character_from_photo(
         }
 
     provider = get_provider()
+    chosen_style = _resolve_art_style(art_style)
     role = f", dressed as {role_in_story}," if role_in_story else ","
     style_prompt = (
-        f"Create a warm, flat-color children's storybook illustration of the person in this "
-        f"reference photo{role} in this style: {DEFAULT_ART_STYLE}. Keep their recognizable "
-        "features (hair, build, any glasses or signature accessory) but fully stylized as a "
-        "cartoon illustration, not a photorealistic render."
+        f"Create a children's storybook illustration of the person in this "
+        f"reference photo{role} in this style: {chosen_style}. Keep their recognizable "
+        "features (hair, build, any glasses or signature accessory) but fully stylized "
+        "per that art direction, not a photorealistic render."
     )
     portrait_slug = f"{character_name.lower().replace(' ', '_')}_reference_portrait"
     try:
@@ -153,7 +170,7 @@ def save_character_from_photo(
         appearance=f"as shown in the stylized reference portrait at {image_url}",
         personality_traits=personality_traits or [],
         role_in_story=role_in_story,
-        art_style=DEFAULT_ART_STYLE,
+        art_style=chosen_style,
         reference_image_path=result.path,
     )
     record = {

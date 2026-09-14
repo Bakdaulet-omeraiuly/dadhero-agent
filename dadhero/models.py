@@ -19,6 +19,56 @@ DEFAULT_ART_STYLE = (
     "shapes; simple clean background; gentle warm lighting; no photorealism"
 )
 
+# A parent-facing style picker (Story settings panel) -- each value is a
+# real, distinct art-direction prompt fragment, not just a label. Kept
+# here (not hardcoded into DEFAULT_ART_STYLE) so save_character/
+# save_character_from_photo can accept an explicit art_style override
+# while every existing call site that doesn't pass one keeps getting
+# today's default, unchanged.
+ART_STYLES: dict[str, str] = {
+    "Storybook (default)": DEFAULT_ART_STYLE,
+    "Watercolor": (
+        "soft watercolor children's book illustration; visible paper texture; "
+        "gentle bleeding edges and light washes of color; delicate ink outlines; "
+        "dreamy, hand-painted feel; no photorealism"
+    ),
+    "Comic book": (
+        "bold comic-book illustration; thick black ink outlines; bright flat "
+        "colors with halftone-dot shading; dynamic panel-style composition; "
+        "energetic linework; no photorealism"
+    ),
+    "Anime / manga": (
+        "clean anime-style illustration; large expressive eyes; soft cel "
+        "shading; simple bold linework; bright saturated colors; no "
+        "photorealism"
+    ),
+    "Claymation / 3D": (
+        "soft 3D-rendered claymation-style illustration; rounded clay-like "
+        "shapes; visible fingerprint/sculpted texture; warm soft studio "
+        "lighting; no photorealism"
+    ),
+    "Pixel art": (
+        "retro 8-bit/16-bit pixel-art illustration; visible square pixels; "
+        "a limited, vibrant retro-game color palette; crisp hard edges; no "
+        "gradients, no photorealism"
+    ),
+    "Chalk & crayon": (
+        "hand-drawn children's chalk-and-crayon illustration; visible waxy "
+        "crayon texture and chalky strokes; slightly imperfect, childlike "
+        "linework; warm paper-colored background; no photorealism"
+    ),
+    "Paper cutout / collage": (
+        "layered paper-cutout collage illustration; visible paper edges and "
+        "soft drop shadows between layers; flat textured-paper shapes; "
+        "handcrafted look; no photorealism"
+    ),
+    "Classic fairytale": (
+        "ornate vintage fairytale-book illustration; intricate detailed "
+        "linework; rich jewel-toned colors; classic storybook engraving "
+        "feel reminiscent of old fairy tale collections; no photorealism"
+    ),
+}
+
 # A small library of proven picture-book story shapes. The agent picks one
 # (or blends) when planning pages instead of inventing structure from
 # scratch every time -- keeps a 6-8 page story readable to a 4-7 year old

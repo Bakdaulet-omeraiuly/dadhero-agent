@@ -25,6 +25,7 @@ import streamlit as st
 
 from dadhero import memory_backend as memory
 from dadhero.agent import build_agent
+from dadhero.models import ART_STYLES
 
 _IMAGE_MD = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOAD_DIR = Path(__file__).resolve().parent / "data" / "uploads"
@@ -377,6 +378,12 @@ def _settings_prefix() -> str:
         parts.append(f"scary level: {st.session_state.setting_scary.lower()}")
     if st.session_state.get("setting_goal", "None") != "None":
         parts.append(f"educational goal: {st.session_state.setting_goal.lower()}")
+    style = st.session_state.get("setting_style", "Storybook (default)")
+    if not style.startswith("Storybook"):
+        # The exact ART_STYLES label, unchanged -- agent.py's system
+        # prompt passes this straight through as save_character's
+        # art_style argument, which looks the label back up itself.
+        parts.append(f"art style: {style}")
     if st.session_state.get("setting_include", "").strip():
         parts.append(f"include: {st.session_state.setting_include.strip()}")
     if st.session_state.get("setting_avoid", "").strip():
@@ -508,6 +515,7 @@ with st.sidebar:
             ["None", "Courage", "Kindness", "Sharing", "Responsibility", "Honesty", "Dealing with fear", "Friendship"],
             key="setting_goal",
         )
+        st.selectbox("Art style", list(ART_STYLES.keys()), key="setting_style")
         st.text_input("Characters to include (e.g. Grandma)", key="setting_include")
         st.text_input("Characters/things to avoid (e.g. dragons)", key="setting_avoid")
 
