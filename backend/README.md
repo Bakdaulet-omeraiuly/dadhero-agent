@@ -83,6 +83,28 @@ as it working.
    (proves history reconstruction from `conversation_messages` works, not
    just in-memory state that happened to survive).
 
+## Deploying (Render.com, free tier)
+
+`backend/Dockerfile` builds from the repo root (it needs to `COPY
+dadhero/` alongside `backend/`), so on Render: New -> Web Service -> pick
+this repo -> set **Root Directory** to the repo root (not `backend/`) and
+**Dockerfile Path** to `backend/Dockerfile`. Add the same four env vars
+from `.env.example` above in Render's dashboard (never commit real
+values). Any host that deploys an arbitrary Dockerfile works the same way
+(Railway, Fly.io) -- Render is just free-tier-friendly and needs no CLI
+setup beyond connecting the GitHub repo.
+
+`frontend/`'s `npm run build` output (`frontend/dist/`) is plain static
+files -- Cloudflare Pages: New project -> this repo -> **Build command**
+`npm run build`, **Build output directory** `frontend/dist`, **Root
+directory** `frontend`, plus the three `VITE_*` env vars from its
+`.env.example`.
+
+Neither of these has actually been deployed yet -- config is written and
+believed correct, not run. Do it after the live-Supabase verification
+checklists above pass locally, not before (deploying something unverified
+just moves the same unknowns to a slower feedback loop).
+
 ## Known gaps (stated plainly, see individual file docstrings)
 
 - `pages` table is never written to -- `dadhero/tools.py`'s
@@ -92,7 +114,5 @@ as it working.
 - `POST`/`PATCH .../pages` (direct client-triggered page generation,
   bypassing the chat flow) from the OpenAPI spec are unimplemented -- all
   page generation currently happens inside an agent turn.
-- No frontend yet consumes this API.
-- Deployment (this needs a persistent Python process, not static
-  hosting -- Render/Railway/Fly.io are reasonable free-tier options) is
-  not set up.
+- Deployment is configured (`backend/Dockerfile`, see above) but not
+  actually deployed anywhere yet.
