@@ -574,20 +574,28 @@ for role, text in st.session_state.history:
 if st.session_state.get("pending_plan"):
     plan = st.session_state.pending_plan
     slug = plan.get("story_slug", "plan")
+    # "page_beats" (the tool call's own argument name) is the reliable
+    # field -- Strands passes a dict return through UNCHANGED when it
+    # already has both "status" and "content" keys (create_story_plan's
+    # does, for a friendly Workshop-panel message), which means the extra
+    # title/beats/page_count fields never make it into the JSON-parsed
+    # toolResult _extract_tool_trace reads for its "output" side. "beats"
+    # is kept as a fallback in case that ever changes.
+    beats = plan.get("page_beats") or plan.get("beats") or []
     with st.container():
         st.markdown('<div class="dh-workshop-label">📐 Review the plan before illustrating</div>', unsafe_allow_html=True)
         with st.form(key=f"plan_form_{slug}"):
             edited_title = st.text_input("Title", value=plan.get("title", ""))
-            st.caption(f"Template: {plan.get('template_key', '')} · {plan.get('page_count', len(plan.get('beats', [])))} pages")
+            st.caption(f"Template: {plan.get('template_key', '')} · {len(beats)} pages")
             edited_beats = []
-            for i, beat in enumerate(plan.get("beats", [])):
+            for i, beat in enumerate(beats):
                 edited_beats.append(st.text_area(f"Page {i + 1}", value=beat, height=60, key=f"beat_{slug}_{i}"))
             approved = st.form_submit_button("✅ Generate the book", use_container_width=True)
         if st.button("🔄 Scrap this plan, start over", key=f"scrap_{slug}"):
             st.session_state.pending_plan = None
             st.rerun()
         if approved:
-            changed = edited_title != plan.get("title") or edited_beats != plan.get("beats")
+            changed = edited_title != plan.get("title") or edited_beats != beats
             if changed:
                 pages_list = "; ".join(f"{i + 1}) {b}" for i, b in enumerate(edited_beats))
                 quick_start_text = (
@@ -693,3 +701,12 @@ if chat_value or quick_start_text:
             st.session_state.pending_plan = None
 
     st.session_state.history.append(("assistant", response_text))
+
+    # The pending_plan editable form is rendered near the TOP of the
+    # script (right after chat history, before this whole turn-processing
+    # block runs) -- setting pending_plan above, in THIS run, doesn't
+    # retroactively draw it below. Rerun so the very next script pass
+    # draws it immediately instead of only after some unrelated later
+    # interaction.
+    if st.session_state.get("pending_plan"):
+        st.rerun()
