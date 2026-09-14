@@ -325,6 +325,31 @@ def _img_tag(path: str) -> str:
     return f'<img src="data:image/{ext};base64,{data}" />'
 
 
+def _settings_prefix() -> str:
+    """A bracketed constraints line the sidebar's Story settings panel
+    builds, prepended to the next message -- see agent.py's system
+    prompt's own "PARENT SETTINGS" section for how it's read. Only
+    includes values the parent actually changed from their default, so a
+    plain message stays plain."""
+    parts = []
+    if st.session_state.get("setting_age"):
+        parts.append(f"child age {st.session_state.setting_age}")
+    if st.session_state.get("setting_tone", "Any") != "Any":
+        parts.append(f"tone: {st.session_state.setting_tone.lower()}")
+    length = st.session_state.get("setting_length", "Default (5-8 pages)")
+    if not length.startswith("Default"):
+        parts.append(f"length: {length.lower()}")
+    if st.session_state.get("setting_scary", "Gentle") != "Gentle":
+        parts.append(f"scary level: {st.session_state.setting_scary.lower()}")
+    if st.session_state.get("setting_goal", "None") != "None":
+        parts.append(f"educational goal: {st.session_state.setting_goal.lower()}")
+    if st.session_state.get("setting_include", "").strip():
+        parts.append(f"include: {st.session_state.setting_include.strip()}")
+    if st.session_state.get("setting_avoid", "").strip():
+        parts.append(f"avoid: {st.session_state.setting_avoid.strip()}")
+    return f"[Parent settings: {', '.join(parts)}]\n\n" if parts else ""
+
+
 def render_story(text: str) -> None:
     pos = 0
     for match in _IMAGE_MD.finditer(text):
@@ -437,6 +462,20 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    with st.expander("⚙️ Story settings", expanded=False):
+        st.caption("Applies to your next message -- passed straight to the agent as an explicit constraint, not just a hint.")
+        st.number_input("Child's age", min_value=2, max_value=12, value=None, key="setting_age", placeholder="Any")
+        st.selectbox("Tone", ["Any", "Funny", "Adventure", "Calm", "Emotional"], key="setting_tone")
+        st.selectbox("Length", ["Default (5-8 pages)", "Short (5-8 pages)", "Medium (9-12 pages)", "Long (13-16 pages)"], key="setting_length")
+        st.select_slider("Scary/tension level", options=["Very gentle", "Gentle", "Adventurous"], value="Gentle", key="setting_scary")
+        st.selectbox(
+            "Educational goal",
+            ["None", "Courage", "Kindness", "Sharing", "Responsibility", "Honesty", "Dealing with fear", "Friendship"],
+            key="setting_goal",
+        )
+        st.text_input("Characters to include (e.g. Grandma)", key="setting_include")
+        st.text_input("Characters/things to avoid (e.g. dragons)", key="setting_avoid")
+
     st.subheader("💬 Try")
     # A prose example, not code -- st.code() renders a fixed-width
     # terminal block that doesn't wrap, clipping mid-word in the
@@ -492,6 +531,14 @@ for role, text in st.session_state.history:
     with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
         render_story(text)
 
+# After at least one reply, offer to continue the same character/universe
+# into a new book -- the agent's system prompt (step 2a) knows to reuse
+# the saved character and keep it feeling like the next chapter, not an
+# unrelated story.
+if st.session_state.history and st.session_state.history[-1][0] == "assistant":
+    if st.button("🔮 Continue this adventure", key="continue_adventure"):
+        quick_start_text = "Continue this adventure -- write the next chapter in the same Story Universe, for the same hero."
+
 chat_value = st.chat_input(
     "Describe your idea, or attach a photo/drawing...",
     accept_file=True,
@@ -515,6 +562,11 @@ if chat_value or quick_start_text:
     st.session_state.history.append(("user", display_text))
     with st.chat_message("user", avatar="🙂"):
         render_story(display_text)
+
+    # The settings prefix goes to the AGENT only -- the parent already
+    # set these via the widgets above, echoing the bracketed line back
+    # into their own chat bubble would just be noise.
+    user_text = _settings_prefix() + user_text
 
     with st.chat_message("assistant", avatar="🦸"):
         workshop_slot = st.empty()

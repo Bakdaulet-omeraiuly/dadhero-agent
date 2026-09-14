@@ -3,10 +3,14 @@ Strands tools for DadHero.
 
 Same discipline as StoryMatch: few tools, each doing a real external
 action (persistence or image generation), not one tool per conceptual
-step. Page-by-page story PLANNING is the agent's own reasoning (like
-Narrative Fingerprint extraction was in StoryMatch) -- there's no
-"plan_story" tool because there's nothing external to call for that; the
-agent just writes the outline and then calls generate_page for each page.
+step. Page-by-page story PLANNING is still the agent's own creative
+reasoning (like Narrative Fingerprint extraction was in StoryMatch) --
+create_story_plan below doesn't do that reasoning FOR the agent, it
+records the plan the agent already worked out, the same
+propose-then-record shape save_character/check_story_fact already use.
+That external record is what makes planning an inspectable tool call
+(visible in the Workshop panel) instead of reasoning that only ever
+existed inside one model response.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from typing import List, Optional
 
 from strands import tool
 
-from dadhero import continuity, storage
+from dadhero import continuity, storage, vision_check
 from dadhero import memory_backend as memory
 from dadhero.image_providers import get_provider
 from dadhero.models import DEFAULT_ART_STYLE, CharacterBible
@@ -209,15 +213,17 @@ def generate_page_image(
     page_slug: str,
     caption_text: Optional[str] = None,
     reference_image_path: Optional[str] = None,
+    is_cover: bool = False,
 ) -> dict:
     """Generate the illustration for one comic page, with its narration burned into the artwork like a real comic panel.
 
     Args:
         scene_description: What's happening in this specific page/panel -- action, setting, mood. Don't re-describe the character's fixed appearance here, that's what character_prompt_fragment is for.
         character_prompt_fragment: The exact, unchanged prompt_fragment string returned by save_character/get_saved_character -- reused verbatim so the character looks the same across pages.
-        page_slug: A short unique filename-safe id for this page, e.g. "space_dad_page3".
-        caption_text: This page's exact narration/dialogue text. Pass it every time -- it gets rendered INTO the image as a clean comic-style caption or speech bubble, not shown separately, so the page looks like a real comic panel. Keep it short (1-2 sentences); long text renders poorly.
-        reference_image_path: The file path of a previously generated page's image (usually page 1's portrait) to condition on for visual consistency -- ALWAYS use the image_path field from a prior result here, never image_url (that may be a remote URL the image provider can't read bytes from). Omit only for the very first image of a character.
+        page_slug: A short unique filename-safe id for this page, e.g. "space_dad_page3". Use "..._cover" for the cover (see is_cover).
+        caption_text: This page's exact narration/dialogue text, OR (when is_cover=True) the book's title. Pass it every time -- it gets rendered INTO the image, not shown separately, so the page looks like a real comic panel/book cover. Keep it short (1-2 sentences, or a few words for a title); long text renders poorly.
+        reference_image_path: The file path of a previously generated page's image (usually page 1's portrait, or the cover's) to condition on for visual consistency -- ALWAYS use the image_path field from a prior result here, never image_url (that may be a remote URL the image provider can't read bytes from). Omit only for the very first image of a character.
+        is_cover: True for this story's front cover -- one per story, generated first, before page 1. Composes the character prominently and renders caption_text as a large book-cover title instead of a caption box.
 
     Returns image_path (local file -- pass this as reference_image_path on
     later calls) and image_url (what to actually show the parent -- on the
@@ -227,7 +233,18 @@ def generate_page_image(
     """
     provider = get_provider()
     prompt = f"{character_prompt_fragment}\n\nScene: {scene_description}"
-    if caption_text:
+    if is_cover:
+        prompt += (
+            "\n\nCompose this as a CHILDREN'S BOOK COVER, not a comic panel: the "
+            "character prominent and centered, inviting and eye-catching, a bit of "
+            "matching background/scenery, room at the top for a title."
+        )
+        if caption_text:
+            prompt += (
+                "\n\nRender this exact text as a large, playful, legible book-cover "
+                f'title across the top -- do not alter the wording: "{caption_text}"'
+            )
+    elif caption_text:
         prompt += (
             "\n\nRender this exact text directly into the image as a clean, legible "
             "comic-book caption box along the bottom edge (a simple rounded white or "
@@ -243,6 +260,84 @@ def generate_page_image(
         "image_url": storage.persist(result.path),
         "provider": result.provider,
         "note": result.note,
+        "is_cover": is_cover,
+    }
+
+
+@tool
+def create_story_plan(
+    title: str,
+    story_slug: str,
+    template_key: str,
+    page_beats: List[str],
+    goal: Optional[str] = None,
+) -> dict:
+    """Record this story's page-by-page plan BEFORE generating any images -- a real, inspectable checkpoint (visible as its own step) rather than a plan that only ever existed inside your own reasoning.
+
+    Call this once, right after you've worked out the outline (step 6 of
+    the workflow), before the first generate_page_image call.
+
+    Args:
+        title: The story's working title.
+        story_slug: The same short id you'll use for every generate_page_image/check_story_fact call in this story.
+        template_key: Which story shape this follows (e.g. "problem_helper_solution", "small_adventure", "bedtime_wind_down").
+        page_beats: One short phrase per page, in order, describing that page's beat (e.g. ["Emma wakes up nervous about her first day", "She meets a friendly robot hallway guide", ...]). This list's length IS the page count -- match it to what the parent asked for: ~5-8 for a short story, ~9-12 for a longer one. Hard-capped at 16 pages regardless (a young child's attention span, and a live demo's patience, both have limits).
+        goal: The behavior/lesson this story targets, if any -- pass the same value you'll later pass to record_finished_story.
+    """
+    capped = page_beats[:16]
+    plan = {
+        "title": title,
+        "template_key": template_key,
+        "goal": goal,
+        "page_count": len(capped),
+        "beats": capped,
+    }
+    continuity.record_story_plan(story_slug, plan)
+    note = f"Plan recorded: '{title}', {len(capped)} pages."
+    if len(page_beats) > 16:
+        note += f" (trimmed from {len(page_beats)} -- 16-page cap.)"
+    return {"status": "success", "content": [{"text": note}], **plan}
+
+
+@tool
+def check_visual_consistency(page_image_path: str, reference_image_path: str, character_description: str) -> dict:
+    """Verify a just-generated page still shows the SAME character as the reference portrait, using an independent vision check (not the same call that drew the page).
+
+    Call this after each generate_page_image call that has a
+    reference_image_path (i.e. every page after the first). If
+    consistent is False, regenerate just that page (same
+    character_prompt_fragment, maybe a more explicit scene_description)
+    rather than presenting a page where the character looks different.
+
+    Args:
+        page_image_path: The image_path this page's generate_page_image call just returned.
+        reference_image_path: The same reference_image_path you passed into that generate_page_image call.
+        character_description: The character's appearance in a sentence or two (from their Character Bible) -- gives the checker something concrete to compare against.
+    """
+    return vision_check.check_consistency(page_image_path, reference_image_path, character_description)
+
+
+@tool
+def audit_story_continuity(story_slug: str) -> dict:
+    """Review every concrete fact locked in so far for this story (via check_story_fact) in one pass -- a final continuity audit after all pages are generated, not just the per-page checks along the way.
+
+    Call this once, after the last page, before presenting the finished
+    story. Read through the facts for anything that reads inconsistent
+    together even though no single check_story_fact call conflicted
+    (e.g. a location fact and a time-of-day fact that don't make sense
+    together) -- check_story_fact only catches the SAME key changing
+    value, not this kind of cross-fact inconsistency.
+
+    Args:
+        story_slug: The same story_slug used for this story's check_story_fact calls.
+    """
+    facts = continuity.get_story_facts(story_slug)
+    plan = continuity.get_story_plan(story_slug)
+    return {
+        "story_slug": story_slug,
+        "fact_count": len(facts),
+        "facts": facts,
+        "planned_page_count": plan.get("page_count") if plan else None,
     }
 
 

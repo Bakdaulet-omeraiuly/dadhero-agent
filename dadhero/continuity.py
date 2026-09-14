@@ -15,7 +15,10 @@ job (recurring characters, past titles).
 
 from __future__ import annotations
 
+from typing import Any
+
 _STORY_FACTS: dict[str, dict[str, str]] = {}
+_STORY_PLANS: dict[str, dict[str, Any]] = {}
 
 
 def check_and_record_fact(story_slug: str, fact_key: str, fact_value: str) -> dict:
@@ -48,5 +51,18 @@ def get_story_facts(story_slug: str) -> dict[str, str]:
     return dict(_STORY_FACTS.get(story_slug, {}))
 
 
+def record_story_plan(story_slug: str, plan: dict[str, Any]) -> None:
+    """Record the page-by-page plan the agent committed to before
+    generating any images (see tools.create_story_plan) -- makes planning
+    a real, inspectable tool call instead of reasoning the agent never
+    externalizes, and gives later calls something to check pages against."""
+    _STORY_PLANS[story_slug] = plan
+
+
+def get_story_plan(story_slug: str) -> dict[str, Any] | None:
+    return _STORY_PLANS.get(story_slug)
+
+
 def reset_story(story_slug: str) -> None:
     _STORY_FACTS.pop(story_slug, None)
+    _STORY_PLANS.pop(story_slug, None)

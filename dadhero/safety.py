@@ -19,10 +19,17 @@ import re
 # fairy-tale peril ("worried", "lost", "scared for a moment") is fine and
 # NOT flagged; this list targets clearly heavier content.
 _CONCERNING_TERMS = [
+    # Violence / death
     "kill", "killed", "killing", "murder", "die", "dies", "dying", "dead body",
     "blood", "gore", "gun", "knife", "weapon", "shoot", "stab",
     "suicide", "self-harm", "abuse", "kidnap",
-    "curse word", "hate", "racist", "sexist",
+    # Bullying / harm between characters -- a story can show a conflict
+    # resolving, but shouldn't dwell on the bullying itself in these terms
+    "bully", "bullying", "bullied", "humiliate", "mock him", "mock her",
+    # Dangerous real-world instructions a child could try to copy
+    "matches", "lighter", "poison", "swallow", "overdose", "choking hazard",
+    # Adult themes / language
+    "curse word", "hate", "racist", "sexist", "naked", "drunk", "alcohol", "cigarette", "drugs",
 ]
 
 _MAX_RECOMMENDED_WORDS_PER_AGE = {

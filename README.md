@@ -170,16 +170,26 @@ before Gemini access does, Titan Image is the documented fallback path
   (concerning-term list + length-vs-age heuristic) run on every page's
   text before it's shown, instead of just trusting the model's judgment
   silently.
-- **`dadhero/tools.py`** -- 12 Strands `@tool` functions: `save_character`,
+- **`dadhero/tools.py`** -- 15 Strands `@tool` functions: `save_character`,
   `save_character_from_photo`, `stylize_drawing`, `get_saved_character`,
-  `save_place`, `generate_page_image`, `get_family_memory`,
-  `check_story_fact`, `check_page_safety`, `record_family_memory`,
-  `record_progress`, `record_finished_story`. Story
-  *planning* (the page-by-page outline, and mapping the parent's intention
-  to a story objective) is deliberately NOT a tool -- like StoryMatch's
-  Narrative Fingerprint extraction, it's the agent's own reasoning, because
-  there's nothing external to call for it. Only steps that touch
-  persistence, verification state, or generate real media are tools.
+  `save_place`, `create_story_plan`, `generate_page_image`,
+  `check_visual_consistency`, `audit_story_continuity`,
+  `get_family_memory`, `check_story_fact`, `check_page_safety`,
+  `record_family_memory`, `record_progress`, `record_finished_story`. The
+  *creative* planning work (the actual page-by-page outline, mapping the
+  parent's intention to a story objective) is still the agent's own
+  reasoning -- like StoryMatch's Narrative Fingerprint extraction, there's
+  nothing external to call for THAT. `create_story_plan` doesn't do that
+  reasoning for it; it records the plan the agent already settled on
+  before any image generation starts, the same propose-then-record shape
+  `save_character`/`check_story_fact` use -- makes planning a real,
+  inspectable checkpoint instead of reasoning that only ever existed
+  inside one model response. `check_visual_consistency` is a second,
+  independent Gemini vision call judging a generated page against the
+  character's reference image (separate from the call that drew it);
+  `audit_story_continuity` is a final read-through of every fact
+  `check_story_fact` recorded, catching cross-fact inconsistency the
+  per-fact check alone can't.
 - **`dadhero/agent.py`** -- the Strands `Agent`, Bedrock primary /
   Anthropic fallback (same pattern as StoryMatch), with a system prompt
   encoding the full workflow including the child-safety redirect above.

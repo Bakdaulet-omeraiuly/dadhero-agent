@@ -4,6 +4,72 @@ Personalized family comic agent (Strands Agents + Bedrock/Anthropic +
 Gemini image generation). See `README.md` for the full picture: safety
 design, verified transcripts, status.
 
+## Agentic pipeline expansion (2026-09-14)
+
+Extended the agent from "chat that makes a comic" toward the full
+"intelligent story agent" spec: plans explicitly, verifies its own
+output, and revises only what needs revising. All additive -- no
+existing tool signature changed, `tests/` all still pass (39 now, was
+30), Streamlit's UI structure/layout untouched per the request that
+prompted this ("keep the current UI style... existing functionality").
+
+**New tools** (`dadhero/tools.py`, wired into `agent.py`'s tool list +
+system prompt workflow):
+- `create_story_plan` -- records the page-by-page outline (title,
+  template, page_beats, goal) the agent already worked out, BEFORE any
+  image generation starts. Same propose-then-record shape
+  `save_character`/`check_story_fact` already use -- doesn't do the
+  creative planning FOR the agent, just makes it a real, inspectable
+  checkpoint (visible in the Workshop panel) instead of reasoning that
+  only ever existed inside one model response. Hard-caps at 16 pages.
+- `check_visual_consistency` (`dadhero/vision_check.py`) -- an
+  independent Gemini vision call comparing a just-generated page against
+  the character's reference image, separate from the call that drew the
+  page. Fails OPEN (`consistent: true`) whenever there's nothing
+  meaningful to check: mock image provider, missing files, no API key,
+  or the check call itself erroring -- a checker failure must never
+  block a page the parent is waiting on.
+- `audit_story_continuity` -- a final read-through of everything
+  `check_story_fact` recorded for a story, called once after the last
+  page. Catches cross-fact inconsistency `check_story_fact` alone can't
+  (it only catches the SAME key changing value, not two different facts
+  quietly contradicting each other).
+- `generate_page_image` gained an `is_cover: bool = False` param
+  (backward compatible, default False) -- every story now opens with a
+  generated cover (title text, hero prominent) before page 1, and every
+  page's `reference_image_path` chains from the COVER now, not page 1.
+
+**Parent controls** (`app.py` sidebar, "⚙️ Story settings" expander):
+child age, tone, length (short/medium/long -> page-count guidance),
+scary/tension level, educational goal, characters to include/avoid.
+Building `[Parent settings: ...]` and prepending it to the next message
+only (never shown in the parent's own chat bubble) -- `agent.py`'s
+system prompt has a dedicated section instructing the agent to treat
+every value present as a hard constraint for that turn, then strip the
+bracketed line before reading the rest as the parent's actual words.
+
+**Story series**: a "🔮 Continue this adventure" button appears once
+there's at least one assistant reply -- reuses the system prompt's
+existing case 2a (now split out: a "continue" request reuses the saved
+character/places instead of re-describing them, and gets a title that
+reads as the next book in the same series).
+
+**Safety**: `dadhero/safety.py`'s term list extended (bullying,
+dangerous real-world instructions a child could copy, adult themes) --
+still a deterministic keyword/heuristic screen, not full LLM-grade
+moderation; stated plainly rather than oversold.
+
+**Deliberately deferred** (stated plainly, not silently dropped): PDF/
+image-bundle export (`export_book`) -- no dependency gap (Pillow, already
+a dependency, can compose a multi-page PDF from the saved PNGs) but no
+demo-critical value under the time this had; an explicit `parse_parent_intent`
+tool -- redundant with what the system prompt's own step 3 already does
+inside one model turn, splitting it into a second tool call would add
+latency with no new capability; renaming existing tools to match every
+requested name 1:1 (e.g. `get_family_memory` -> `load_child_profile`) --
+pure relabeling risk for zero functional gain against a system prompt
+that already references the current names carefully throughout.
+
 ## Available skills (installed via the EdgeLab Space "Стек вайбкодера" lesson)
 
 - **Supabase** + **Postgres Best Practices** -- installed via
