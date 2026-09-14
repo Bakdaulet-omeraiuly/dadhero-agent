@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { listMessages, sendMessage, type Message } from "../api";
-import { supabase } from "../supabaseClient";
 import { MessageBubble } from "./MessageBubble";
 
 // One conversation per browser tab for this MVP -- persisted in
@@ -65,16 +64,7 @@ export function Chat() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <div className="dh-hero">
-        <div className="dh-hero-emoji">🦸</div>
-        <div style={{ flex: 1 }}>
-          <h1>DadHero</h1>
-          <p>Turns a child's real life into personalized illustrated stories that grow with them.</p>
-        </div>
-        <button className="dh-button" type="button" onClick={() => supabase.auth.signOut()}>
-          Sign out
-        </button>
-      </div>
+      <p className="dh-chat-tagline">Turns a child's real life into personalized illustrated stories that grow with them.</p>
 
       <div className="dh-chat-scroll" style={{ flex: 1 }}>
         {messagesQuery.isLoading && <p style={{ color: "var(--ink-soft)" }}>Loading your Story Universe...</p>}

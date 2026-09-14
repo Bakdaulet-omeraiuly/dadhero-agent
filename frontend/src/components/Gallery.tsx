@@ -13,8 +13,30 @@ type Tab = "characters" | "places" | "stories";
 export function Gallery() {
   const [tab, setTab] = useState<Tab>("stories");
 
+  // Fetched here (not just inside each tab) so the counts strip below
+  // reflects all three regardless of which tab is open -- React Query
+  // dedupes against the identical queryKey each tab's own useQuery uses,
+  // so this doesn't cost extra requests once a tab is opened.
+  const stories = useQuery({ queryKey: ["stories"], queryFn: listStories });
+  const characters = useQuery({ queryKey: ["characters"], queryFn: listCharacters });
+  const places = useQuery({ queryKey: ["places"], queryFn: listPlaces });
+
   return (
     <div className="dh-card">
+      <div className="dh-universe-stats">
+        <div className="dh-stat-chip">
+          <strong>{stories.data?.length ?? "–"}</strong>
+          <span>Stories</span>
+        </div>
+        <div className="dh-stat-chip">
+          <strong>{characters.data?.length ?? "–"}</strong>
+          <span>Characters</span>
+        </div>
+        <div className="dh-stat-chip">
+          <strong>{places.data?.length ?? "–"}</strong>
+          <span>Places</span>
+        </div>
+      </div>
       <div className="dh-gallery-tabs">
         {(["stories", "characters", "places"] as Tab[]).map((t) => (
           <button

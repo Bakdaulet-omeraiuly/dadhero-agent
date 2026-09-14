@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { Gallery } from "./components/Gallery";
 import { Login } from "./components/Login";
+import { Navbar } from "./components/Navbar";
 import { supabase } from "./supabaseClient";
 
 type View = "chat" | "gallery";
@@ -28,22 +29,7 @@ export function App() {
 
   return (
     <>
-      <nav className="dh-nav">
-        <button
-          type="button"
-          className={`dh-button dh-tab${view === "chat" ? " active" : ""}`}
-          onClick={() => setView("chat")}
-        >
-          Chat
-        </button>
-        <button
-          type="button"
-          className={`dh-button dh-tab${view === "gallery" ? " active" : ""}`}
-          onClick={() => setView("gallery")}
-        >
-          Story Universe
-        </button>
-      </nav>
+      <Navbar view={view} onChange={setView} />
       {view === "chat" ? <Chat /> : <Gallery />}
     </>
   );

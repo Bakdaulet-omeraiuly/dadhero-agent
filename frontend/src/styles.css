@@ -60,26 +60,78 @@ h3 {
   margin: 0;
 }
 
-.dh-hero {
+/* Top bar -- brand mark, primary nav, account action, the same shape a
+   real product's header has (logo left, links center-left, account
+   right) rather than floating pill buttons above the page. Sticky so it
+   reads as the app's fixed chrome, not part of the scrolling content. */
+.dh-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 18px 22px;
-  margin: 16px;
+  gap: 28px;
+  padding: 14px 24px;
   background: var(--card);
-  border: 2px solid var(--border);
-  border-radius: 20px;
-  box-shadow: 0 6px 18px var(--shadow);
+  border-bottom: 2px solid var(--border);
 }
-.dh-hero-emoji {
-  font-size: 42px;
-}
-.dh-hero h1 {
-  font-size: 28px;
+.dh-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: "Baloo 2", sans-serif;
   font-weight: 800;
+  font-size: 19px;
+  color: var(--ink);
+  padding: 0;
 }
-.dh-hero p {
-  margin: 2px 0 0;
+.dh-topbar-emoji {
+  font-size: 24px;
+}
+.dh-topbar-links {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.dh-topbar-link {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  background: none;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  color: var(--ink-soft);
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.dh-topbar-link:hover {
+  color: var(--ink);
+}
+.dh-topbar-link.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.dh-topbar-signout {
+  font-size: 13px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 6px 4px;
+}
+.dh-topbar-signout:hover {
+  color: var(--ink);
+}
+
+.dh-chat-tagline {
+  max-width: 720px;
+  margin: 16px auto 8px;
+  padding: 0 16px;
   color: var(--ink-soft);
   font-size: 14px;
   font-weight: 600;
@@ -206,16 +258,32 @@ h3 {
   flex: 1;
 }
 
-.dh-nav {
+.dh-universe-stats {
   display: flex;
-  gap: 8px;
-  padding: 0 16px;
-  max-width: 720px;
-  margin: 0 auto 8px;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
-.dh-nav .dh-tab.active {
-  background: var(--accent);
-  color: var(--accent-ink);
+.dh-stat-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--paper);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+.dh-stat-chip strong {
+  font-family: "Baloo 2", sans-serif;
+  font-size: 20px;
+  color: var(--accent);
+}
+.dh-stat-chip span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
 }
 
 .dh-gallery-tabs {
