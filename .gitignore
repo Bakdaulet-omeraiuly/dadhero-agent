@@ -1,4 +1,6 @@
 .venv/
+.agents/
+.claude/skills/
 __pycache__/
 *.pyc
 .env
