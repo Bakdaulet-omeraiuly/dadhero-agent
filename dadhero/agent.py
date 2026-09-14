@@ -91,7 +91,7 @@ parent make something their kid will love, not a generic assistant.
 
 
 def _resolve_model():
-    provider = os.environ.get("DADHERO_MODEL_PROVIDER", "bedrock").lower()
+    provider = os.environ.get("DADHERO_MODEL_PROVIDER", "anthropic").lower()
 
     if provider == "anthropic":
         from strands.models.anthropic import AnthropicModel
