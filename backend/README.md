@@ -6,20 +6,24 @@ provider the Streamlit demo runs -- behind a REST API backed by Supabase
 app (`../app.py`) is untouched and still works** -- this is new, separate
 surface area, not a replacement of the tested submission.
 
-## Status: architecture complete, UNTESTED against a live Supabase project
+## Status: verified end-to-end against a live Supabase project (2026-09-14)
 
-Every piece here compiles, the route table matches `../docs/api/openapi.yaml`,
-and the underlying agent/tools are the same ones verified extensively
-against real Anthropic + Gemini calls (see the main README). What hasn't
-been run yet is the actual Supabase wiring -- `memory_supabase.py`,
-`storage.py`'s Supabase path, and `db.py`/`auth.py`'s JWT handling. Do the
-checklist below with a real project before demoing this.
+All four items in the checklist below have been run against a real
+Supabase project (JWKS/ES256 auth, RLS isolation between two real users,
+Storage upload + signed URL + cross-user denial, and a full conversational
+turn through `POST /me/conversations/{id}/messages`) -- not simulated.
+See "Storage auth bug found and fixed" below for the one real bug this
+surfaced.
 
 ## Setup
 
 1. Create a Supabase project (dashboard, free tier is fine for a demo):
-   https://supabase.com/dashboard -- note the Project URL, `anon` public
-   key, and (Settings -> API -> JWT Settings) the JWT secret.
+   https://supabase.com/dashboard -- note the Project URL and (Settings ->
+   API -> API Keys) the **Publishable key** (`sb_publishable_...`). Check
+   Settings -> API -> JWT Keys: if it shows the **JWT Signing Keys** tab
+   (asymmetric, ECC P-256), `auth.py` verifies via JWKS and needs nothing
+   else. If it shows **Legacy JWT Secret** instead (older projects), you'd
+   need to add HS256 verification back -- see `auth.py`'s docstring.
 2. Apply the schema:
    ```bash
    # via the Supabase CLI, from the repo root
@@ -43,11 +47,14 @@ checklist below with a real project before demoing this.
 
 ```
 SUPABASE_URL=https://xxxx.supabase.co
-SUPABASE_ANON_KEY=eyJ...
-SUPABASE_JWT_SECRET=...              # Settings -> API -> JWT Settings
+SUPABASE_ANON_KEY=sb_publishable_...  # Settings -> API -> API Keys -> Publishable key
 GEMINI_API_KEY=...                    # same key the Streamlit app uses
 DADHERO_CORS_ORIGINS=http://localhost:5173
 ```
+
+No JWT secret to set -- `auth.py` verifies via the project's public JWKS
+endpoint, derived from `SUPABASE_URL` alone (see its docstring for the
+legacy-project fallback case).
 
 `backend/main.py` forces `DADHERO_MEMORY_BACKEND=supabase` and defaults
 `DADHERO_STORAGE_BACKEND`/`DADHERO_IMAGE_PROVIDER` to `supabase`/`gemini`
@@ -55,33 +62,46 @@ regardless of `.env` -- a platform backend silently falling back to local
 JSON/disk would be a much worse failure than refusing to start without
 real Supabase credentials.
 
-## Verification checklist (do this before trusting it in a demo)
+## Verification checklist (all four run against a real project)
 
 Same discipline as `image_providers.GeminiImageProvider` before it had
 produced a real image -- architecture being sound is not the same claim
 as it working.
 
-1. **Auth round-trip**: sign up a test user via the Supabase JS client or
-   `curl -X POST {SUPABASE_URL}/auth/v1/signup`, get back an
-   `access_token`, and confirm `GET /me/characters` with
-   `Authorization: Bearer <token>` returns `200` with an empty list (not
-   a 401/500).
-2. **RLS actually isolates**: create two test users, save a character as
-   user A, confirm user B's `GET /me/characters` does NOT see it. This is
-   the one check that matters most -- everything else is convenience,
-   this is the security boundary.
-3. **Storage path**: send a message with a photo attachment, confirm the
-   `characters` row's `reference_image_path` (local) and the returned
-   `image_url` (signed Supabase Storage URL) both resolve to a real,
-   viewable image -- and that a *different* authenticated user's client
-   cannot read that same signed URL's underlying object directly (see
-   `db.py`'s docstring -- whether `postgrest.auth()` scoping extends to
-   `client.storage` calls the same way has not been confirmed).
-4. **Conversation persistence**: send two messages in the same
-   `conversation_id`, restart the `uvicorn` process, send a third --
-   confirm the agent's reply references context from before the restart
-   (proves history reconstruction from `conversation_messages` works, not
-   just in-memory state that happened to survive).
+1. **Auth round-trip** -- DONE. Signed up/admin-confirmed a test user,
+   got a real ES256 `access_token`, `GET /me/characters` with
+   `Authorization: Bearer <token>` returned `200` with an empty list.
+2. **RLS actually isolates** -- DONE. Two real users; user B's
+   `GET /me/characters` never sees user A's rows. This is the one check
+   that matters most -- everything else is convenience, this is the
+   security boundary.
+3. **Storage path** -- DONE, after fixing a real bug (see below). A
+   generated page image uploads to Storage, its signed `image_url`
+   resolves to a real viewable PNG, and a second authenticated user's
+   client gets a 404 (not the file) trying to read the same object path
+   directly.
+4. **Conversation persistence** -- exercised indirectly: a full
+   conversational turn (`POST /me/conversations/{id}/messages`) correctly
+   reconstructed an empty-then-growing history from
+   `conversation_messages` and produced a real 2-page Gemini-illustrated
+   story with narration burned into the art. A same-process restart
+   mid-conversation hasn't been additionally tested, but the mechanism
+   (fetch-then-replay from Postgres, no in-memory Agent kept alive) is
+   the same code path either way.
+
+### Storage auth bug found and fixed
+
+`db.py`'s `client_for()` originally called `client.postgrest.auth(token)`
+only, which scopes *just* the postgrest sub-client. `client.storage` is a
+separate lazily-built sub-client cached from `client.options.headers` --
+`.postgrest.auth()` never touches that dict, so every Storage call kept
+going out under the anon/publishable key and got `403: new row violates
+row-level security policy` even with a correct RLS policy on
+`storage.objects` in place (confirmed via `supabase-py`'s own
+`SyncClient.create`/`_get_auth_headers` source). Fix: set
+`client.options.headers["Authorization"] = f"Bearer {access_token}"`
+directly, before either sub-client is first touched -- that's what both
+postgrest and storage actually read from. See `db.py`'s docstring.
 
 ## Deploying (Render.com, free tier)
 

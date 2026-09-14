@@ -5,12 +5,17 @@ and rejects anything else -- this, not any application-level check, is
 step one of the tenant-isolation story (Postgres RLS is step two; see
 supabase/migrations/0001_init.sql and dadhero/memory_supabase.py).
 
-UNTESTED against a live Supabase project as of writing. Uses the legacy
-shared-secret (HS256) verification path, which every Supabase project
-supports; newer projects can additionally issue asymmetric (RS256/ES256)
-JWTs via a JWKS endpoint -- if SUPABASE_JWT_SECRET decoding fails on a
-real token, check your project's Settings -> API -> JWT Settings for
-which signing scheme is active and adjust accordingly.
+Verified against this project's actual Settings -> API -> JWT Keys page
+(not assumed): it uses the NEW asymmetric JWT Signing Keys (ECC P-256),
+not the legacy HS256 shared secret -- a static SUPABASE_JWT_SECRET would
+NOT have verified these tokens. This fetches the project's public signing
+key from its JWKS endpoint instead, keyed by the token's `kid` header, and
+verifies with ES256. No shared secret to manage or leak.
+
+If you ever point this at an older project still on "Legacy JWT Secret"
+(same Settings -> API -> JWT Keys page, other tab), this will need to
+fall back to HS256 with that static secret instead -- check which tab
+your project shows before assuming this file is right for it.
 """
 
 from __future__ import annotations
@@ -20,8 +25,20 @@ from dataclasses import dataclass
 
 import jwt
 from fastapi import Header, HTTPException
+from jwt import PyJWKClient
 
-SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+
+_jwk_client: PyJWKClient | None = None
+
+
+def _get_jwk_client() -> PyJWKClient:
+    global _jwk_client
+    if _jwk_client is None:
+        if not SUPABASE_URL:
+            raise RuntimeError("SUPABASE_URL not configured on the server")
+        _jwk_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    return _jwk_client
 
 
 @dataclass
@@ -35,14 +52,12 @@ async def get_current_user(authorization: str = Header(...)) -> AuthedUser:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
 
-    if not SUPABASE_JWT_SECRET:
-        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET not configured on the server")
-
     try:
+        signing_key = _get_jwk_client().get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256"],
             audience="authenticated",
         )
     except jwt.PyJWTError as e:

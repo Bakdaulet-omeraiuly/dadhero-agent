@@ -68,11 +68,21 @@ existing pattern:
   code for no benefit.
 - Schema: `supabase/migrations/0001_init.sql` (characters, places,
   stories, pages, memories, progress_updates, conversation_messages, all
-  RLS-scoped to `auth.uid()`).
-- **UNTESTED against a live Supabase project** -- backend/README.md has
-  the verification checklist (auth round-trip, RLS actually isolates two
-  users, Storage signed-URL access, conversation persistence across a
-  restart). Do not claim this works in a demo before running it.
+  RLS-scoped to `auth.uid()`) + `0002_storage_policies.sql` (RLS on
+  `storage.objects`, since a private bucket has none by default).
+- **Verified against a live Supabase project (2026-09-14)** --
+  backend/README.md's full checklist passed: JWKS/ES256 auth, RLS
+  isolation between two real users, Storage upload + signed URL + 404 for
+  a different user, and a full conversational turn producing a real
+  2-page Gemini-illustrated story persisted end-to-end. Found and fixed
+  one real bug along the way: `client.postgrest.auth(token)` doesn't
+  scope `client.storage` (separate sub-client, its own cached auth
+  headers) -- see `backend/db.py`'s docstring.
+- Model provider: `DADHERO_MODEL_PROVIDER=gemini` for both text and
+  images on the platform backend (Anthropic key ran out of credit
+  mid-session; `dadhero/agent.py`'s `_resolve_model()` gained a `gemini`
+  branch via `strands.models.gemini.GeminiModel`). Streamlit's `.env`
+  still defaults to Anthropic/Bedrock, unaffected.
 - 152-FZ note: only binds if there are Russian Federation citizen users;
   confirm the target audience before deciding server location for that
   data specifically.
@@ -86,10 +96,11 @@ Deliberately no router (two views, branch on session state instead -- see
 README for why) and no character/story/place gallery views (backend's CRUD
 routes exist, nothing calls them from this frontend yet).
 
-**UNTESTED end-to-end** -- frontend, backend, and the Supabase project all
-need to be live together for the first real run; neither README's
-verification checklist has been executed. Do both before claiming this
-works in a demo.
+**Backend+Supabase verified (see above); frontend not yet run against
+them** -- the React app itself still hasn't been started against the now-
+verified live backend+Supabase pair (only `npm run build` type-checked
+cleanly). `frontend/README.md`'s checklist is the remaining unverified
+piece.
 
 **Not built:** deployment, a conversation-switcher / past-conversations
 list, character/story/place gallery views, and the `pages` table gap noted

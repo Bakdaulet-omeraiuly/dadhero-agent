@@ -198,6 +198,13 @@ def _resolve_model():
         model_id = os.environ.get("DADHERO_ANTHROPIC_MODEL_ID", "claude-sonnet-4-5")
         return AnthropicModel(model_id=model_id, max_tokens=3000)
 
+    if provider == "gemini":
+        from strands.models.gemini import GeminiModel
+
+        api_key = os.environ.get("GEMINI_API_KEY")
+        model_id = os.environ.get("DADHERO_GEMINI_MODEL_ID", "gemini-3.6-flash")
+        return GeminiModel(client_args={"api_key": api_key}, model_id=model_id, params={"temperature": 0.6})
+
     model_id = os.environ.get(
         "DADHERO_BEDROCK_MODEL_ID",
         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",

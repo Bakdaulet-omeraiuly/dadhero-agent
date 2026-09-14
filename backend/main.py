@@ -9,12 +9,19 @@ Run: uvicorn backend.main:app --reload --port 8000
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+# Explicit path, not bare load_dotenv() -- that searches the CURRENT
+# WORKING DIRECTORY upward, which silently finds nothing (not an error,
+# just an empty environment) when uvicorn is launched from the repo root
+# rather than backend/. Found this the hard way testing against a real
+# Supabase project: SUPABASE_URL read as "" with no exception until much
+# later, at first actual use.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # The platform backend always runs the Supabase-backed memory/storage
 # paths, regardless of what's in .env -- DADHERO_MEMORY_BACKEND=local
