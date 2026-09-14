@@ -22,6 +22,67 @@ stakes:
   **Story Universe** per family (`dadhero/memory.py`), so a new story can
   reuse a saved place, avoid repeating a theme, or reference an earlier
   adventure.
+- Every book opens with a generated **cover**, plans its page count as a
+  real recorded checkpoint (`create_story_plan`) before any art is made,
+  verifies each page against the character's reference image with an
+  independent Gemini vision call (`check_visual_consistency`) and
+  regenerates just that page if it drifted, and does a final
+  cross-page **continuity audit** (`audit_story_continuity`) before
+  presenting the book -- plan, verify, revise, not just generate.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    Parent(("👨‍👩‍👧 Parent"))
+
+    subgraph UI["app.py (Streamlit)"]
+        Settings["⚙️ Story settings\nage · tone · length · goal · avoid"]
+        Chat["Chat + live Workshop panel"]
+        Universe["Story Universe sidebar\ncharacters · places · stories"]
+    end
+
+    Parent -->|idea, real event, or feedback| Chat
+    Settings -.->|constraints prefix| Chat
+    Chat --> Agent
+
+    subgraph Agent["Strands Agent — dadhero/agent.py"]
+        Prompt["System prompt:\nworkflow + non-negotiable\nchild-photo safety rule"]
+    end
+
+    Agent <-->|reasons over turns| Model{{"Bedrock / Anthropic / Gemini\n(text model)"}}
+    Agent -->|tool calls, agent decides order| Tools
+
+    subgraph Tools["dadhero/tools.py — 15 @tool functions"]
+        Character["save_character(_from_photo)\nstylize_drawing"]
+        Plan["create_story_plan"]
+        Page["generate_page_image\n(cover + pages)"]
+        Vision["check_visual_consistency"]
+        Continuity["check_story_fact\naudit_story_continuity"]
+        Safety["check_page_safety"]
+        Record["record_family_memory\nrecord_progress\nrecord_finished_story"]
+    end
+
+    Plan --> ContStore[("continuity.py\nin-process plan + facts")]
+    Continuity --> ContStore
+    Page --> ImgProvider{{"image_providers.py"}}
+    Vision --> VisionCheck{{"vision_check.py"}}
+    ImgProvider -->|"Nano Banana"| Gemini[("Gemini API")]
+    VisionCheck -->|"independent judge call"| Gemini
+    Character --> Memory[("memory_backend.py\nStory Universe")]
+    Record --> Memory
+    Memory --> JSON[("data/family_memory.json\n(Streamlit, local)")]
+    Memory -.->|platform build| Supabase[("Supabase Postgres + RLS\n(backend/, optional)")]
+
+    Chat -->|renders| Book(["📖 Cover + numbered pages\ncaption burned into the art"])
+    Universe -.->|reads| Memory
+```
+
+The optional platform build (`backend/` FastAPI + `frontend/` React,
+dotted above) reuses every one of these same tools and this same agent
+unchanged, swapping only the memory/storage backend for a real
+multi-tenant Supabase project with Postgres RLS -- see
+`backend/README.md` for that path's own live-verification results.
 
 ## The safety decision this product is built around
 
@@ -371,16 +432,47 @@ Reset family memory / generated images between demo runs:
 
 ## Pitch (for the submission form)
 
-> Every parent has told their kid a bedtime story where they're the hero.
-> DadHero turns that into something real: describe an idea, a worry, or
-> just what happened today -- "she's nervous about starting school," "he
-> lost his first tooth" -- and it maps that to a story objective, builds a
-> consistent illustrated character (any family member, including the
-> child, always from a text description or the child's own drawing, never
-> a photo of a minor), plans a page-by-page arc that shows the lesson
-> instead of stating it, checks its own continuity and age-appropriateness
-> on every page, and remembers -- across sessions -- the character, the
-> goal, and whether it actually helped.
+**What it does.** DadHero is an agent that turns a child's real life --
+a worry, a milestone, a memory, or just a theme -- into a personalized
+illustrated storybook where a family member is the hero. A parent
+describes an idea or something that actually happened ("she's nervous
+about starting school," "he lost his first tooth today," "we visited
+grandma last summer"), and the agent maps that to a story objective,
+locks a consistent character (from a text description, a photo of an
+*adult* family member, or the child's own drawing -- never a photo of
+the child), plans and generates a full illustrated book with a cover,
+verifies each page's art against the character's reference image and
+its facts against everything established earlier in the story, screens
+every page for age-appropriateness, and remembers the character, the
+goal, and whether it actually helped -- across sessions, so a later
+report ("she walked in by herself today!") gets matched back to the
+exact story that targeted it.
+
+**Who it's for.** Parents who already tell their kids bedtime stories
+where they're the hero, and want that turned into something they can
+actually keep, revisit, and build on -- not a one-shot AI image
+generator, a companion that remembers the family's Story Universe
+(characters, places, past adventures, lessons) the way a real ongoing
+series would.
+
+**How it works.** A single Strands `Agent` (Bedrock primary, Anthropic/
+Gemini fallback) drives 15 purpose-built tools -- it decides which to
+call and in what order, not a single giant prompt: `save_character(_from_photo)`
+locks the Character Bible once; `create_story_plan` records the
+page-by-page outline as a real checkpoint before any art is made;
+`generate_page_image` draws a cover and each page (Gemini "Nano Banana",
+chaining every image off the cover for consistency, narration burned
+directly into the art); `check_visual_consistency` is an independent
+Gemini vision call judging each new page against the reference portrait,
+regenerating just that page if it drifted; `check_story_fact` and
+`audit_story_continuity` catch contradictions (a red backpack on page 1,
+blue on page 4) both as they happen and in a final cross-page pass;
+`check_page_safety` screens every page's text; and
+`record_family_memory` / `record_progress` / `record_finished_story`
+build the persistent Story Universe a later conversation reads back via
+`get_family_memory`. See the Architecture diagram above for the full
+picture, and `backend/` for a live-verified Supabase-backed multi-tenant
+version of the same agent behind a REST API.
 
 ## Beyond the hackathon: REST API design
 
