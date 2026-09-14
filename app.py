@@ -81,7 +81,23 @@ st.markdown(
         --shadow: rgba(0, 0, 0, 0.35);
     }
 
+    /* Streamlit's own <body> stays its default cool dark grey
+       (rgb(14,17,23)) regardless of this page's theme -- invisible most
+       of the time since .stApp normally covers the whole viewport, but
+       the sticky bottom bar around the chat input sits in a region
+       where that default shows through underneath, clashing with the
+       warm brown everywhere else (confirmed via getComputedStyle: body
+       stayed rgb(14,17,23) while .stApp correctly read the dark --paper
+       token). Match it explicitly so there's no seam. */
+    body { background: var(--paper); }
     .stApp { background: var(--paper); color: var(--ink); }
+    /* A specific wrapper div inside the sticky bottom bar (around the
+       chat input) carries its OWN hardcoded rgb(14,17,23) background,
+       found by walking the DOM from stChatInput up to body -- the
+       `body` rule above doesn't reach it since this div paints over
+       it. Targeted by DOM position (data-testid's own container),
+       not its unstable auto-generated emotion-cache class name. */
+    [data-testid="stBottom"] > div { background: var(--paper) !important; }
     html, body, [class*="css"] { font-family: 'Nunito', sans-serif; }
     h1, h2, h3 { font-family: 'Baloo 2', sans-serif !important; color: var(--ink) !important; }
 
@@ -181,11 +197,16 @@ st.markdown(
     }
     .stButton > button:hover { background: var(--accent) !important; color: var(--accent-ink) !important; }
 
-    /* Chat input pill */
+    /* Chat input pill -- the outer container AND its first inner div
+       (which carries its own hardcoded Streamlit light-theme grey,
+       rgb(240,242,246), found the same way as the stBottom fix above)
+       both need the override, or a cool grey shows through in light
+       mode even though the outer pill itself is the right warm cream. */
     [data-testid="stChatInput"] {
         border: 2px solid var(--border) !important; border-radius: 999px !important;
         background: var(--card) !important;
     }
+    [data-testid="stChatInput"] > div { background: var(--card) !important; }
 
     /* Comic panel image frame */
     .dh-panel {
