@@ -235,6 +235,19 @@ with st.sidebar:
         "photo of the child (see the safety note in the README)."
     )
 
+    st.divider()
+    st.subheader("📘 For developers")
+    st.link_button(
+        "API Reference (planned)",
+        "https://claude.ai/code/artifact/c173bc68-12f2-4974-bb25-e542b8f92e3d",
+        width="stretch",
+    )
+    st.caption(
+        "A designed (not yet built) REST API for a future web platform "
+        "version of DadHero -- documentation only, no server behind it. "
+        "This app is the real, working submission."
+    )
+
 # Show the page "at rest" with real generated proof instead of a blank
 # chat -- a first-time visitor sees what this actually makes before typing
 # anything.
