@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import html
 import json
 import os
 import re
@@ -259,6 +260,18 @@ st.markdown(
         height: 120px; font-family: 'Baloo 2', sans-serif; font-weight: 800;
         font-size: 44px; color: var(--accent-ink);
         background: linear-gradient(135deg, var(--accent), var(--accent2));
+    }
+
+    /* Book reader -- a bigger, centered stage for one page at a time,
+       distinct from the smaller inline .dh-panel used in the chat feed. */
+    .dh-book-title {
+        font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px;
+        color: var(--ink); padding-top: 4px;
+    }
+    .dh-book-page { max-width: 480px; margin: 10px auto 14px; }
+    .dh-book-pagecount {
+        text-align: center; font-family: 'Baloo 2', sans-serif; font-weight: 700;
+        color: var(--accent2); padding-top: 8px;
     }
 
     /* Workshop panel -- live trace of the agent's tool calls while a
@@ -580,18 +593,47 @@ if st.session_state.story_library:
                 if os.path.exists(story["thumb"]):
                     st.markdown(f'<div class="dh-gallery-card">{_img_tag(story["thumb"])}</div>', unsafe_allow_html=True)
                 st.caption(story["title"][:44])
-                if st.button("📖 Read", key=f"read_story_{story['id']}", use_container_width=True):
+                if st.button("Read Book →", key=f"read_story_{story['id']}", use_container_width=True):
                     st.session_state.reading_story_id = story["id"]
+                    st.session_state.reader_page_idx = 0
                     st.rerun()
 
     if st.session_state.get("reading_story_id") is not None:
         match = next((s for s in st.session_state.story_library if s["id"] == st.session_state.reading_story_id), None)
-        if match:
+        if match and match["pages"]:
+            pages = match["pages"]
+            idx = max(0, min(st.session_state.get("reader_page_idx", 0), len(pages) - 1))
+            page = pages[idx]
             with st.container(border=True):
-                if st.button("✕ Close", key="close_reading"):
-                    st.session_state.reading_story_id = None
-                    st.rerun()
-                render_story(match["text"])
+                title_col, close_col = st.columns([5, 1])
+                with title_col:
+                    st.markdown(
+                        f'<div class="dh-book-title">{html.escape(match["title"])}</div>', unsafe_allow_html=True
+                    )
+                with close_col:
+                    if st.button("✕ Close", key="close_reading", use_container_width=True):
+                        st.session_state.reading_story_id = None
+                        st.rerun()
+
+                st.markdown(f'<div class="dh-panel-label">{page["label"]}</div>', unsafe_allow_html=True)
+                if os.path.exists(page["image_path"]):
+                    st.markdown(f'<div class="dh-panel dh-book-page">{_img_tag(page["image_path"])}</div>', unsafe_allow_html=True)
+                else:
+                    st.caption(f"(missing image: {page['image_path']})")
+
+                prev_col, mid_col, next_col = st.columns([1, 2, 1])
+                with prev_col:
+                    if st.button("← Prev", key="reader_prev", disabled=idx == 0, use_container_width=True):
+                        st.session_state.reader_page_idx = idx - 1
+                        st.rerun()
+                with mid_col:
+                    st.markdown(
+                        f'<div class="dh-book-pagecount">{idx + 1} / {len(pages)}</div>', unsafe_allow_html=True
+                    )
+                with next_col:
+                    if st.button("Next →", key="reader_next", disabled=idx == len(pages) - 1, use_container_width=True):
+                        st.session_state.reader_page_idx = idx + 1
+                        st.rerun()
     st.divider()
 
 with st.sidebar:
@@ -603,6 +645,7 @@ with st.sidebar:
         st.session_state.pending_drawing_path = None
         st.session_state.drawing_preview_path = None
         st.session_state.active_character_name = None
+        st.session_state.last_approved_plan_title = None
         st.rerun()
 
     provider = os.environ.get("DADHERO_IMAGE_PROVIDER", "mock")
@@ -775,6 +818,13 @@ if st.session_state.get("pending_plan"):
                 )
             else:
                 quick_start_text = "The plan looks good as-is -- please generate the book now, starting with the cover."
+            # Stashed here, not read from pending_plan later -- this line
+            # clears pending_plan in THIS SAME script run, before the
+            # generation turn that actually produces the pages even
+            # starts, so by the time that turn's code runs pending_plan is
+            # already None. edited_title covers the parent having just
+            # retitled it in the form, still with no markdown/preamble.
+            st.session_state.last_approved_plan_title = edited_title or plan.get("title")
             st.session_state.pending_plan = None
 
 # After at least one reply, offer to continue the same character/universe
@@ -855,6 +905,34 @@ with st.expander("✏️ Draw a sketch (instead of uploading a photo)", expanded
 
 if st.session_state.get("pending_drawing_path"):
     st.caption(f"📎 Drawing ready to attach: {Path(st.session_state.pending_drawing_path).name}")
+
+# The core "real life -> story" moment: a parent doesn't need an idea, a
+# theme, or a costume -- just what actually happened today. Routes into
+# the system prompt's existing case 2b (a real memory becomes tonight's
+# story), but the button itself already IS the parent's yes, so the
+# message says so explicitly rather than letting the agent pause to ask.
+with st.container(border=True):
+    st.markdown("##### ⭐ Make tonight's story")
+    st.caption("Something that really happened today, turned into tonight's bedtime story.")
+    today_input_col, today_button_col = st.columns([4, 1])
+    with today_input_col:
+        today_event = st.text_input(
+            "What happened today?",
+            placeholder="e.g. Baki helped his grandfather feed the horses today.",
+            key="today_event_input",
+        )
+    with today_button_col:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        make_tonight_clicked = st.button("✨ Make it", key="make_tonight_story", use_container_width=True)
+    if make_tonight_clicked:
+        if today_event.strip():
+            quick_start_text = (
+                f'Today: "{today_event.strip()}" -- please turn this into tonight\'s story right now, '
+                "fictionalized but keeping the real moment recognizable. I already want it made -- no "
+                "need to ask first, go ahead."
+            )
+        else:
+            st.warning("Tell me what happened today first.")
 
 chat_value = st.chat_input(
     "Describe your idea, or attach a photo/drawing...",
@@ -939,6 +1017,20 @@ if chat_value or quick_start_text:
         # happened, not a flag the model might forget to clear.
         plan_calls = [t for t in this_turn if t["name"] == "create_story_plan"]
         page_calls = [t for t in this_turn if t["name"] == "generate_page_image"]
+
+        # The clean title the parent actually typed/approved (from
+        # create_story_plan), for the Story Library card/reader -- NOT the
+        # reply text, which is the agent's own conversational sentence
+        # ("Here is the finished story for **X**!") and looks wrong as a
+        # book title. Read from last_approved_plan_title (stashed at the
+        # "Generate the book" click, above) rather than pending_plan
+        # itself -- that same click already nulls pending_plan in the SAME
+        # script run, before the generation turn below even starts, so
+        # pending_plan itself is already gone by the time this code runs.
+        clean_title = st.session_state.get("last_approved_plan_title")
+        if not clean_title and plan_calls:
+            clean_title = plan_calls[-1]["input"].get("title") or plan_calls[-1]["output"].get("title")
+
         if plan_calls and not page_calls:
             # story_slug only lives in the call's input (it's not part of
             # what the tool returns); beats/page_count only in its output
@@ -978,22 +1070,74 @@ if chat_value or quick_start_text:
                     existing["reference_image_path"] = first_page_path
                     memory.save_character("default_family", char_name, existing)
 
-        # A reply with real pages in it becomes a Story Library card --
-        # checked on the reply text itself (not tool_calls), so this
-        # still works if a future page/revision message adds pages to
-        # an otherwise-plan-only turn.
-        image_matches = list(_IMAGE_MD.finditer(response_text))
-        if image_matches:
-            before_first = response_text[: image_matches[0].start()].strip()
-            title_line = next((line.strip(" #*") for line in before_first.splitlines() if line.strip()), "Untitled story")
-            st.session_state.story_library.append(
+        # Turn this turn's real generate_page_image calls into Story
+        # Library pages -- built from the TOOL CALLS themselves (reliable
+        # page_slug + image_path), not by regex-scraping the reply text.
+        # This is also what makes revision provably surgical: if a page's
+        # slug already belongs to an existing story, it's a REVISION --
+        # only that one page's image_path is replaced in place, every
+        # other page (and the reader's current position) is untouched.
+        # If none of this turn's slugs are already known, it's a new
+        # story finishing generation.
+        new_pages = []
+        for pc in page_calls:
+            img_path = (pc.get("output") or {}).get("image_path")
+            if not img_path:
+                continue
+            new_pages.append(
                 {
-                    "id": uuid.uuid4().hex,
-                    "title": title_line or "Untitled story",
-                    "thumb": image_matches[0].group(2),
-                    "text": response_text,
+                    "slug": pc["input"].get("page_slug", ""),
+                    "image_path": img_path,
+                    "is_cover": bool((pc.get("output") or {}).get("is_cover", False)),
                 }
             )
+
+        if new_pages:
+            target_story = None
+            for story in st.session_state.story_library:
+                existing_slugs = {p["slug"] for p in story["pages"]}
+                if any(p["slug"] in existing_slugs for p in new_pages):
+                    target_story = story
+                    break
+
+            if target_story is not None:
+                by_slug = {p["slug"]: p for p in new_pages}
+                for page in target_story["pages"]:
+                    if page["slug"] in by_slug:
+                        page["image_path"] = by_slug[page["slug"]]["image_path"]
+                cover_page = next((p for p in target_story["pages"] if p["is_cover"]), None)
+                target_story["thumb"] = (cover_page or target_story["pages"][0])["image_path"]
+            else:
+                cover = next((p for p in new_pages if p["is_cover"]), None)
+                ordered = ([cover] if cover else []) + [p for p in new_pages if not p["is_cover"]]
+                page_num = 0
+                labeled = []
+                for p in ordered:
+                    if p["is_cover"]:
+                        label = "Cover"
+                    else:
+                        page_num += 1
+                        label = f"Page {page_num}"
+                    labeled.append({**p, "label": label})
+                if clean_title:
+                    title_line = clean_title
+                else:
+                    # Fallback only -- the model skipped create_story_plan
+                    # entirely (shouldn't happen per agent.py step 6, but
+                    # don't leave the card titleless if it ever does).
+                    image_matches = list(_IMAGE_MD.finditer(response_text))
+                    before_first = response_text[: image_matches[0].start()].strip() if image_matches else ""
+                    title_line = next(
+                        (line.strip(" #*") for line in before_first.splitlines() if line.strip()), "Untitled story"
+                    )
+                st.session_state.story_library.append(
+                    {
+                        "id": uuid.uuid4().hex,
+                        "title": title_line or "Untitled story",
+                        "thumb": labeled[0]["image_path"],
+                        "pages": labeled,
+                    }
+                )
 
     st.session_state.history.append(("assistant", response_text))
 
