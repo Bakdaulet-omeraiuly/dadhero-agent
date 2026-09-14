@@ -77,10 +77,25 @@ existing pattern:
   confirm the target audience before deciding server location for that
   data specifically.
 
-**Not built:** the React frontend (nothing consumes this API yet),
-deployment, and the `pages` table gap noted in
-`backend/routers/stories.py`.
+**Built** (`frontend/`, see `frontend/README.md`): React + Vite + TypeScript
+MVP -- Supabase Auth login/signup (`Login.tsx`), a chat UI at Streamlit-UX
+parity (`Chat.tsx`, `MessageBubble.tsx`) calling `backend`'s conversational
+endpoint, same visual identity (`styles.css` mirrors `app.py`'s palette
+exactly). `npm install && npx tsc -b && npx vite build` all pass clean.
+Deliberately no router (two views, branch on session state instead -- see
+README for why) and no character/story/place gallery views (backend's CRUD
+routes exist, nothing calls them from this frontend yet).
+
+**UNTESTED end-to-end** -- frontend, backend, and the Supabase project all
+need to be live together for the first real run; neither README's
+verification checklist has been executed. Do both before claiming this
+works in a demo.
+
+**Not built:** deployment, a conversation-switcher / past-conversations
+list, character/story/place gallery views, and the `pages` table gap noted
+in `backend/routers/stories.py`.
 
 **The Streamlit app (`../app.py`) is untouched and remains the verified,
-working hackathon submission** -- this backend is new, additive surface
-area, not a replacement, until/unless the frontend reaches parity.
+working hackathon submission** -- this backend+frontend pair is new,
+additive surface area, not a replacement, until/unless it reaches parity
+and is actually verified live.

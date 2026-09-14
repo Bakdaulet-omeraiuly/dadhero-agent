@@ -1,0 +1,207 @@
+/* Same identity as app.py's Streamlit demo -- warm storybook page, a
+   two-crayon coral+teal accent pair, Baloo 2 for headings / Nunito for
+   body. Kept in one shared file rather than per-component so the two
+   surfaces (Streamlit prototype, this platform frontend) read as one
+   product, not two different-looking things. */
+
+:root {
+  --paper: #fbf5e9;
+  --card: #fffdf8;
+  --ink: #2e241a;
+  --ink-soft: #7a6b57;
+  --border: #e9dcc0;
+  --accent: #ee7b4f;
+  --accent-ink: #ffffff;
+  --accent2: #2f9c8f;
+  --shadow: rgba(46, 36, 26, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #211a12;
+    --card: #2a2216;
+    --ink: #f3ead9;
+    --ink-soft: #b9aa90;
+    --border: #40331f;
+    --accent: #f3936a;
+    --accent-ink: #241a10;
+    --accent2: #52c2b2;
+    --shadow: rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #211a12;
+  --card: #2a2216;
+  --ink: #f3ead9;
+  --ink-soft: #b9aa90;
+  --border: #40331f;
+  --accent: #f3936a;
+  --accent-ink: #241a10;
+  --accent2: #52c2b2;
+  --shadow: rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Nunito", sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Baloo 2", sans-serif;
+  margin: 0;
+}
+
+.dh-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  margin: 16px;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 6px 18px var(--shadow);
+}
+.dh-hero-emoji {
+  font-size: 42px;
+}
+.dh-hero h1 {
+  font-size: 28px;
+  font-weight: 800;
+}
+.dh-hero p {
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dh-card {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  margin: 16px;
+  box-shadow: 0 3px 10px var(--shadow);
+}
+
+.dh-input {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  width: 100%;
+}
+
+.dh-button {
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 700;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  border-radius: 999px;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.dh-button:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.dh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dh-error {
+  color: #c0392b;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.dh-chat-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.dh-bubble {
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 16px;
+  background: var(--card);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+.dh-bubble.parent {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.dh-bubble.assistant {
+  align-self: flex-start;
+}
+.dh-bubble p {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+.dh-bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.dh-panel {
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 8px 0;
+  box-shadow: 4px 4px 0 var(--accent);
+}
+.dh-panel img {
+  display: block;
+  width: 100%;
+}
+
+.dh-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.dh-tool-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent2);
+  border: 1.5px solid var(--accent2);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.dh-composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--paper);
+  border-top: 2px solid var(--border);
+  max-width: 720px;
+  margin: 0 auto;
+}
+.dh-composer input[type="text"] {
+  flex: 1;
+}
