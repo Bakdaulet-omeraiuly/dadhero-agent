@@ -104,6 +104,17 @@ st.markdown(
         padding: 10px 12px;
     }
 
+    /* "Why this is an agent" -- small feature rows (icon + one line)
+       instead of a plain bullet list, same product-feature-grid
+       language a real landing page uses. */
+    .dh-feature-row {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 7px 0; border-bottom: 1px solid #40331F;
+    }
+    .dh-feature-row:last-child { border-bottom: none; }
+    .dh-feature-row span { font-size: 17px; line-height: 1.4; flex-shrink: 0; }
+    .dh-feature-row p { margin: 0; font-size: 13.5px; line-height: 1.4; color: #F3EAD9; }
+
     /* Hero header */
     .dh-hero {
         display: flex; align-items: center; gap: 16px;
@@ -407,12 +418,23 @@ with st.sidebar:
                         st.caption(s["idea"])
 
     st.subheader("🧠 Why this is an agent")
+    # <strong>, not **markdown** -- these get concatenated straight into
+    # raw HTML below (unsafe_allow_html), and CommonMark doesn't run
+    # markdown-style emphasis back over text already inside a raw HTML
+    # block, so ** would show up literally instead of rendering bold.
+    _AGENT_FEATURES = [
+        ("📇", "Builds a <strong>Character Bible</strong> once, reuses it verbatim per page"),
+        ("📐", "Plans a 5-8 page story arc from a proven template"),
+        ("🔗", "Chains a reference image forward for visual consistency"),
+        ("🔁", "Regenerates only the page you flag on feedback"),
+        ("🗂️", "<strong>Remembers</strong> characters, places, goals &amp; progress across sessions"),
+    ]
     st.markdown(
-        "- Builds a **Character Bible** once, reuses it verbatim per page\n"
-        "- Plans a 5-8 page story arc from a proven template\n"
-        "- Chains a reference image forward for visual consistency\n"
-        "- Regenerates only the page you flag on feedback\n"
-        "- **Remembers** characters, places, goals & progress across sessions"
+        "".join(
+            f'<div class="dh-feature-row"><span>{emoji}</span><p>{text}</p></div>'
+            for emoji, text in _AGENT_FEATURES
+        ),
+        unsafe_allow_html=True,
     )
 
     st.subheader("💬 Try")
@@ -433,19 +455,38 @@ with st.sidebar:
         "photo of the child (see the safety note in the README)."
     )
 
+_QUICK_PROMPTS = [
+    ("😰", "First day of school", "My daughter is nervous about her first day of school -- make her a brave astronaut story about it."),
+    ("🦷", "A real milestone", "My son lost his first tooth today! Turn it into a fun adventure."),
+    ("🤝", "Teach a lesson", "Teach my daughter about sharing through a short, warm bedtime story."),
+]
+
+quick_start_text: str | None = None
+
 # Show the page "at rest" with real generated proof instead of a blank
 # chat -- a first-time visitor sees what this actually makes before
-# typing anything.
-if not st.session_state.history and _DEMO_DIR.exists():
-    demo_images = sorted(_DEMO_DIR.glob("example_page*.png"))
-    if demo_images:
-        st.markdown("##### 📖 A story DadHero actually made")
-        cols = st.columns(len(demo_images))
-        for col, img_path in zip(cols, demo_images):
-            with col:
-                st.markdown(f'<div class="dh-gallery-card">{_img_tag(str(img_path))}</div>', unsafe_allow_html=True)
-        st.caption("Real output -- same locked character, chained across pages. Now describe your own idea below.")
-        st.divider()
+# typing anything, plus one-click starting points (the same "suggested
+# prompt" pattern most AI products use) so a first message doesn't
+# require staring at a blank input.
+if not st.session_state.history:
+    if _DEMO_DIR.exists():
+        demo_images = sorted(_DEMO_DIR.glob("example_page*.png"))
+        if demo_images:
+            st.markdown("##### 📖 A story DadHero actually made")
+            cols = st.columns(len(demo_images))
+            for col, img_path in zip(cols, demo_images):
+                with col:
+                    st.markdown(f'<div class="dh-gallery-card">{_img_tag(str(img_path))}</div>', unsafe_allow_html=True)
+            st.caption("Real output -- same locked character, chained across pages. Now describe your own idea below.")
+            st.divider()
+
+    st.markdown("##### ✨ Or start with one of these")
+    cols = st.columns(len(_QUICK_PROMPTS))
+    for col, (emoji, label, prompt) in zip(cols, _QUICK_PROMPTS):
+        with col:
+            if st.button(f"{emoji} {label}", key=f"quickstart_{label}", use_container_width=True):
+                quick_start_text = prompt
+    st.divider()
 
 for role, text in st.session_state.history:
     with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
@@ -457,18 +498,19 @@ chat_value = st.chat_input(
     file_type=["png", "jpg", "jpeg"],
 )
 
-if chat_value:
-    user_text = chat_value.text or ""
-    display_text = user_text
-
-    for uploaded in chat_value.files:
-        saved_path = save_uploaded_file(uploaded)
-        user_text += f"\n\n[Uploaded file: {saved_path}]"
-        display_text += f"\n\n![attached]({saved_path})"
-
-    if not user_text.strip():
-        user_text = "(see attached file)"
-        display_text = "(see attached file)"
+if chat_value or quick_start_text:
+    if chat_value:
+        user_text = chat_value.text or ""
+        display_text = user_text
+        for uploaded in chat_value.files:
+            saved_path = save_uploaded_file(uploaded)
+            user_text += f"\n\n[Uploaded file: {saved_path}]"
+            display_text += f"\n\n![attached]({saved_path})"
+        if not user_text.strip():
+            user_text = "(see attached file)"
+            display_text = "(see attached file)"
+    else:
+        user_text = display_text = quick_start_text
 
     st.session_state.history.append(("user", display_text))
     with st.chat_message("user", avatar="🙂"):
