@@ -29,6 +29,15 @@ stakes:
   regenerates just that page if it drifted, and does a final
   cross-page **continuity audit** (`audit_story_continuity`) before
   presenting the book -- plan, verify, revise, not just generate.
+- Revision is **surgical, and live-verified as such**: "make page 4
+  funnier and add Grandpa" regenerates that one page's art and re-runs
+  only that page's checks -- the other pages' image files are
+  provably (by file mtime) never touched.
+- A real page-turning **Book Reader** (cover, one page at a time,
+  Prev/Next), a **Characters gallery** with real saved portraits ready
+  to reuse in one click, and a **"Make tonight's story"** box that turns
+  what actually happened today into tonight's book -- the app feels like
+  the parent's own studio, not a single-shot form.
 
 ## Architecture
 
@@ -473,6 +482,34 @@ build the persistent Story Universe a later conversation reads back via
 `get_family_memory`. See the Architecture diagram above for the full
 picture, and `backend/` for a live-verified Supabase-backed multi-tenant
 version of the same agent behind a REST API.
+
+**The moment that actually proves it's an agent, not a generator.** Ask
+for a finished 6-page book, then say "make page 4 funnier and add
+Grandpa." Watch the Workshop panel: it reads the Story Universe, finds
+Grandpa already saved (or introduces him), identifies page 4 as the
+only page in scope, reruns just that page's safety/continuity checks,
+regenerates *only* that page's art against the same reference image,
+and re-verifies visual consistency -- the other five pages, and the
+cover, are never touched. This is live-verified, not asserted: a real
+end-to-end run confirmed (by file modification time) that the untouched
+pages' image files literally never changed while the flagged page's did.
+A prompt-only "agent" can't show you that boundary; a real tool-calling
+one can.
+
+**It feels like the parent's own studio, not a form.** A "🎭 Your
+Characters" gallery shows every character ever made, with their real
+generated portrait (not a placeholder) -- click "Use" and start a new
+book with them immediately, no redescribing. A "📚 Your Story Library"
+holds every finished book; "Read Book →" opens a real page-turning
+reader (cover, one page at a time, ← Prev / N of total / Next →), not a
+scrolled wall of images. A "⭐ Make tonight's story" box sits right above
+the chat input -- "What happened today?" turns something that actually
+happened into tonight's bedtime story in one click, the clearest version
+of the real-life → story premise. And a comic-style art picker (nine
+real, distinct art directions -- watercolor, claymation, pixel art,
+paper-cutout, and more) applies to everything the agent draws, including
+a child's own hand-drawn sketch on an in-browser canvas turned into a
+finished illustration in the chosen style.
 
 ## Beyond the hackathon: REST API design
 
