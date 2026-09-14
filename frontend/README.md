@@ -5,30 +5,31 @@ a chat interface at parity with the Streamlit demo's UX (message list,
 text input, photo/drawing attachment, generated pages shown as framed
 "comic panels").
 
-## Status: builds and type-checks cleanly; UNTESTED against a live backend
+## Status: builds and type-checks cleanly; backend it talks to is live-verified, this frontend itself hasn't been run against it yet
 
 `npm install && npx tsc -b && npx vite build` all pass with zero errors --
-the code is structurally sound. It has **not** been run against a live
-Supabase project + `backend` instance (chicken-and-egg with
-`backend/README.md`'s own "UNTESTED" status) -- do the manual check below
-once both are live.
+the code is structurally sound. `backend/README.md`'s checklist has since
+passed against a real Supabase project; this frontend hasn't been pointed
+at that live pair yet -- do the manual check below once you have.
 
 ## Deliberate scope cuts (stated plainly)
 
-- **No TanStack Router.** `docs/api/design-notes.md` and `CLAUDE.md`
-  mention TanStack Router as part of the target stack; this MVP has
-  exactly two views (signed out -> `Login`, signed in -> `Chat`), so
-  `App.tsx` just branches on session state. Adding a router for two
-  screens would be ceremony, not architecture -- reach for it when a
-  second real page (a character/story gallery) actually exists.
+- **No TanStack Router**, even with a second real view now (`Gallery.tsx`,
+  a "Story Universe" tab next to Chat). `App.tsx` still just branches on
+  local state (`view: "chat" | "gallery"`) the same way it branches on
+  session state for Login/Chat -- two tabs is still ceremony-free without
+  a router; reach for one if/when this grows a third independently-
+  addressable page (deep links, browser back/forward).
 - **One conversation per browser tab**, remembered via `localStorage`
   (see `Chat.tsx`) -- no "past conversations" list. `GET
   /me/conversations/{id}/messages` already supports listing a given
   conversation's history; a conversation-switcher UI is straightforward
   to add on top but wasn't, for time.
-- **No character/story/place gallery views** -- `backend`'s CRUD routers
-  for those exist and work from `curl`, nothing in this frontend calls
-  them yet. The chat is the only surface.
+- **Gallery views are read-only.** `Gallery.tsx` lists characters,
+  places, and stories (expandable to that story's illustrated pages) via
+  `backend`'s CRUD GET routes -- creating/editing still only happens
+  through the chat, matching the OpenAPI spec's split between the
+  conversational endpoint and the plain resource routes.
 
 ## Setup
 

@@ -48,3 +48,53 @@ export async function sendMessage(
   }
   return res.json();
 }
+
+export interface Character {
+  id: string;
+  character_name: string;
+  relationship: string;
+  appearance_text: string | null;
+  role_in_story: string;
+  reference_image_path: string | null;
+  created_at: string;
+}
+
+export interface Place {
+  id: string;
+  place_name: string;
+  description: string;
+}
+
+export interface Story {
+  id: string;
+  title: string;
+  idea: string | null;
+  template_key: string;
+  goal: string | null;
+  status: "draft" | "finished";
+  character_id: string | null;
+  created_at: string;
+}
+
+export interface Page {
+  story_id: string;
+  page_number: number;
+  scene_description: string;
+  caption_text: string;
+  image_url: string;
+  is_placeholder: boolean;
+  created_at: string;
+}
+
+async function getJSON<T>(path: string): Promise<T> {
+  const headers = await authHeader();
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  return res.json();
+}
+
+export const listCharacters = () => getJSON<{ data: Character[] }>("/me/characters").then((b) => b.data);
+export const listPlaces = () => getJSON<{ data: Place[] }>("/me/places").then((b) => b.data);
+export const listStories = () => getJSON<{ data: Story[] }>("/me/stories").then((b) => b.data);
+export const listPages = (storyId: string) =>
+  getJSON<{ data: Page[] }>(`/me/stories/${storyId}/pages`).then((b) => b.data);

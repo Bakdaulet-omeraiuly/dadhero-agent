@@ -205,3 +205,95 @@ h3 {
 .dh-composer input[type="text"] {
   flex: 1;
 }
+
+.dh-nav {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px;
+  max-width: 720px;
+  margin: 0 auto 8px;
+}
+.dh-nav .dh-tab.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.dh-gallery-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.dh-tab.active {
+  background: var(--accent2);
+  border-color: var(--accent2);
+  color: var(--accent-ink);
+}
+
+.dh-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.dh-gallery-item {
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--paper);
+}
+.dh-gallery-item h3 {
+  font-size: 17px;
+  margin-bottom: 2px;
+}
+.dh-gallery-item p {
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+.dh-gallery-meta {
+  color: var(--ink-soft);
+  font-size: 12px !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dh-story-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.dh-status-pill {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 10px;
+  border: 1.5px solid var(--ink-soft);
+  color: var(--ink-soft);
+}
+.dh-status-pill.finished {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+.dh-page-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-top: 10px;
+}
+.dh-page-strip .dh-panel {
+  flex: 0 0 140px;
+  margin: 0;
+}

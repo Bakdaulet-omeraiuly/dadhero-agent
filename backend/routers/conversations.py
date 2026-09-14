@@ -5,17 +5,19 @@ Supabase (so it survives restarts and isn't tied to one server process),
 runs one full Strands agent turn via the SAME dadhero.agent.build_agent()
 the Streamlit demo uses, and persists both sides of the turn.
 
-UNTESTED against a live Supabase project -- see backend/README.md.
+Verified against a live Supabase project -- see backend/README.md.
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from backend.deps import BoundRequest, bound_request
 from dadhero.agent import build_agent
+from dadhero.request_context import current_conversation_id
 
 router = APIRouter(prefix="/me/conversations", tags=["conversations"])
 
@@ -32,6 +34,105 @@ def _extract_tool_calls(agent) -> list[str]:
         for block in msg.get("content", [])
         if isinstance(block, dict) and "toolUse" in block
     ]
+
+
+def _extract_tool_pairs(agent, tool_name: str) -> list[tuple[dict, dict]]:
+    """(input, output) for every call to `tool_name` in agent.messages, in
+    order. A @tool-decorated function's plain-dict return value (no
+    "status"/"content" keys of its own, e.g. generate_page_image's) gets
+    JSON-serialized into the toolResult's one text content block by
+    strands' decorator -- json.loads it back here rather than re-deriving
+    the same shape a second way."""
+    pending: dict[str, dict] = {}
+    pairs: list[tuple[dict, dict]] = []
+    for msg in agent.messages:
+        for block in msg.get("content", []):
+            if not isinstance(block, dict):
+                continue
+            if "toolUse" in block and block["toolUse"].get("name") == tool_name:
+                pending[block["toolUse"]["toolUseId"]] = block["toolUse"].get("input", {})
+            elif "toolResult" in block:
+                tr = block["toolResult"]
+                tool_input = pending.pop(tr.get("toolUseId"), None)
+                if tool_input is None:
+                    continue
+                output: dict = {}
+                for c in tr.get("content", []):
+                    if isinstance(c, dict) and "text" in c:
+                        try:
+                            output = json.loads(c["text"])
+                        except (json.JSONDecodeError, TypeError):
+                            output = {}
+                        break
+                pairs.append((tool_input, output))
+    return pairs
+
+
+def _sync_pages(ctx: BoundRequest, conversation_id: str, agent) -> None:
+    """Reconciles the `pages` table from this conversation's
+    generate_page_image tool calls. dadhero/tools.py's generate_page_image
+    itself only persists the image FILE (see its docstring) -- deliberately
+    kept unchanged so Streamlit's tested tool signature stays untouched.
+    Resolves (or creates, as a draft) a `stories` row keyed by
+    conversation_id, since pages are usually generated in an earlier turn
+    than the one that calls record_finished_story (see
+    memory_supabase.record_story's upsert-by-conversation_id).
+
+    Best-effort: any failure here is logged, never raised -- a page-table
+    bookkeeping bug must not break the actual comic already delivered to
+    the parent in this response."""
+    page_calls = _extract_tool_pairs(agent, "generate_page_image")
+    if not page_calls:
+        return
+
+    existing = (
+        ctx.client.table("stories")
+        .select("id")
+        .eq("family_id", ctx.user_id)
+        .eq("conversation_id", conversation_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if existing:
+        story_id = existing[0]["id"]
+    else:
+        story_id = (
+            ctx.client.table("stories")
+            .insert(
+                {
+                    "family_id": ctx.user_id,
+                    "conversation_id": conversation_id,
+                    "title": "Untitled story",
+                    "template_key": "unknown",
+                    "status": "draft",
+                }
+            )
+            .execute()
+            .data[0]["id"]
+        )
+
+    seen_slugs: dict[str, int] = {}
+    rows = []
+    for tool_input, tool_output in page_calls:
+        if not tool_output.get("image_url"):
+            continue  # this call errored (see generate_page_image's own error branch) -- nothing to persist
+        slug = tool_input.get("page_slug", "")
+        if slug not in seen_slugs:
+            seen_slugs[slug] = len(seen_slugs) + 1
+        rows.append(
+            {
+                "story_id": story_id,
+                "page_number": seen_slugs[slug],
+                "scene_description": tool_input.get("scene_description", ""),
+                "caption_text": tool_input.get("caption_text") or "",
+                "image_path": tool_output.get("image_path", ""),
+                "image_url": tool_output.get("image_url", ""),
+                "is_placeholder": tool_output.get("provider") == "mock",
+            }
+        )
+    if rows:
+        ctx.client.table("pages").upsert(rows, on_conflict="story_id,page_number").execute()
 
 
 @router.get("/{conversation_id}/messages")
@@ -98,9 +199,18 @@ async def send_message(
     ).execute()
 
     agent = build_agent(initial_messages=initial_messages)
-    result = agent(user_text)
+    token = current_conversation_id.set(conversation_id)
+    try:
+        result = agent(user_text)
+    finally:
+        current_conversation_id.reset(token)
     reply_text = str(result)
     tool_calls = _extract_tool_calls(agent)
+
+    try:
+        _sync_pages(ctx, conversation_id, agent)
+    except Exception:  # noqa: BLE001 -- see _sync_pages' docstring: never break the reply over this
+        pass
 
     saved = (
         ctx.client.table("conversation_messages")

@@ -102,9 +102,18 @@ verified live backend+Supabase pair (only `npm run build` type-checked
 cleanly). `frontend/README.md`'s checklist is the remaining unverified
 piece.
 
+**Closed since the initial rebuild:** the `pages` table gap (
+`backend/routers/conversations.py`'s `_sync_pages` reconciles it from the
+agent's own tool-call history after each turn; `dadhero/tools.py` itself
+stays unchanged), the OpenAPI spec's direct `POST`/`PATCH .../pages`
+routes (reuse the same `check_story_fact`/`check_page_safety`/
+`generate_page_image` functions the chat agent calls), and read-only
+character/story/place gallery views in the frontend (`Gallery.tsx`, a tab
+next to Chat -- still no router, just a second local view). Needs
+`supabase/migrations/0003_pages_gap.sql` applied.
+
 **Not built:** deployment, a conversation-switcher / past-conversations
-list, character/story/place gallery views, and the `pages` table gap noted
-in `backend/routers/stories.py`.
+list.
 
 **The Streamlit app (`../app.py`) is untouched and remains the verified,
 working hackathon submission** -- this backend+frontend pair is new,

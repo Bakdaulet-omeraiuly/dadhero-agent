@@ -127,12 +127,24 @@ just moves the same unknowns to a slower feedback loop).
 
 ## Known gaps (stated plainly, see individual file docstrings)
 
-- `pages` table is never written to -- `dadhero/tools.py`'s
-  `generate_page_image` persists the image file but not a page row (see
-  `routers/stories.py`'s docstring for why this wasn't closed under time
-  pressure, and the two ways to close it properly).
-- `POST`/`PATCH .../pages` (direct client-triggered page generation,
-  bypassing the chat flow) from the OpenAPI spec are unimplemented -- all
-  page generation currently happens inside an agent turn.
 - Deployment is configured (`backend/Dockerfile`, see above) but not
   actually deployed anywhere yet.
+
+### Closed since the initial rebuild
+
+- **`pages` table now gets written to.** `dadhero/tools.py`'s
+  `generate_page_image` is still unchanged (persists the image file only,
+  so Streamlit's tested tool signature stays untouched) -- instead
+  `routers/conversations.py`'s `_sync_pages` reconciles a `pages` row for
+  every `generate_page_image` call it finds in the agent's tool-call
+  history after each turn, resolving (or creating, as a draft) a
+  `stories` row keyed by `conversation_id`
+  (`memory_supabase.record_story` upserts onto that same row once
+  `record_finished_story` fires). Requires
+  `supabase/migrations/0003_pages_gap.sql`.
+- **`POST`/`PATCH .../pages`** (direct, non-chat page generation) are
+  implemented in `routers/stories.py`, delegating to the exact same
+  `check_story_fact`/`check_page_safety`/`generate_page_image` functions
+  the chat agent calls -- one place enforces continuity/safety, not two
+  that could drift (same pattern as `routers/characters.py`'s
+  `create_character`).

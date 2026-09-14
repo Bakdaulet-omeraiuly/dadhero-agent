@@ -30,3 +30,13 @@ current_family_id: ContextVar[str] = ContextVar("current_family_id", default="de
 # than importing `supabase` here so dadhero/ has no hard dependency on it
 # for the Streamlit (local-JSON) path.
 current_supabase_client: ContextVar[Any] = ContextVar("current_supabase_client", default=None)
+
+# The platform-conversation this agent turn belongs to, if any. Lets
+# memory_supabase.py's record_story() upsert the SAME stories row that
+# backend/routers/conversations.py's page-sync already created as a draft
+# (pages are normally generated in an earlier turn than the one that
+# calls record_finished_story) instead of inserting a second, duplicate
+# row. None for Streamlit and for any request that isn't inside a
+# conversational turn (e.g. the direct pages/{id} routes set their own
+# story row directly and never touch this).
+current_conversation_id: ContextVar[str | None] = ContextVar("current_conversation_id", default=None)

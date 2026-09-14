@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dadhero.request_context import current_family_id, current_supabase_client
+from dadhero.request_context import current_conversation_id, current_family_id, current_supabase_client
 
 
 def _client():
@@ -110,19 +110,38 @@ def record_story(
     idea: str,
     template_key: str,
     goal: str | None = None,
-) -> None:
+) -> dict[str, Any]:
     fid = _fid(family_id)
     c = _client()
-    c.table("stories").insert(
-        {
-            "family_id": fid,
-            "title": title,
-            "idea": idea,
-            "template_key": template_key,
-            "goal": goal,
-            "status": "finished",
-        }
-    ).execute()
+    row = {
+        "family_id": fid,
+        "title": title,
+        "idea": idea,
+        "template_key": template_key,
+        "goal": goal,
+        "status": "finished",
+    }
+    # If this conversation already has a draft `stories` row (created by
+    # conversations.py's page-sync when generate_page_image ran earlier in
+    # this same conversation), finish THAT row instead of inserting a
+    # second one -- otherwise the pages already attached to the draft
+    # would silently orphan from the "real" finished story a dashboard
+    # would show. See request_context.current_conversation_id's docstring.
+    conv_id = current_conversation_id.get()
+    if conv_id:
+        row["conversation_id"] = conv_id
+        existing = (
+            c.table("stories")
+            .select("id")
+            .eq("family_id", fid)
+            .eq("conversation_id", conv_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if existing:
+            return c.table("stories").update(row).eq("id", existing[0]["id"]).execute().data[0]
+    return c.table("stories").insert(row).execute().data[0]
 
 
 def record_memory(family_id: str, memory_text: str, used_in_story: str | None = None) -> None:
