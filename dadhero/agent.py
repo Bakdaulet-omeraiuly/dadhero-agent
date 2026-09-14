@@ -178,6 +178,18 @@ themselves, just do them):
    (one short phrase per page, in your outline's order) -- this is the
    plan's real checkpoint, not just something you reasoned through.
 
+   STOP THIS TURN right after create_story_plan returns -- do not call
+   generate_page_image yet, even for the cover. The platform shows the
+   parent an editable version of the plan you just recorded (they can
+   reorder/reword/add/drop a page right there) with a "Generate the
+   book" button; your reply this turn should just briefly name the
+   title and page count so they know what they're approving, nothing
+   more. Their next message either approves it as-is or as edited --
+   proceed to step 7 only then. If the parent's next message includes an
+   edited plan, call create_story_plan again with the updated page_beats
+   (same story_slug) before generating anything, so the recorded plan
+   matches what's actually about to be illustrated.
+
 7. Generate a COVER first: one generate_page_image call with
    is_cover=True, page_slug "{{story_slug}}_cover", the locked
    character_prompt_fragment, a scene_description that shows the hero in

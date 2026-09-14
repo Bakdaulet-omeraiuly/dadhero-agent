@@ -431,6 +431,7 @@ with st.sidebar:
     if st.button("Start a new story"):
         st.session_state.agent = build_agent()
         st.session_state.history = []
+        st.session_state.pending_plan = None
         st.rerun()
 
     provider = os.environ.get("DADHERO_IMAGE_PROVIDER", "mock")
@@ -565,6 +566,39 @@ for role, text in st.session_state.history:
     with st.chat_message(role, avatar="🦸" if role == "assistant" else "🙂"):
         render_story(text)
 
+# Human-in-the-loop checkpoint: the agent stops right after create_story_plan
+# (see agent.py's step 6) instead of going straight to illustration -- the
+# parent gets to reorder/reword/drop a page before any art (or API cost) is
+# spent on it, not just react after the fact. Approving (with or without
+# edits) sends one follow-up message that resumes the SAME conversation.
+if st.session_state.get("pending_plan"):
+    plan = st.session_state.pending_plan
+    slug = plan.get("story_slug", "plan")
+    with st.container():
+        st.markdown('<div class="dh-workshop-label">📐 Review the plan before illustrating</div>', unsafe_allow_html=True)
+        with st.form(key=f"plan_form_{slug}"):
+            edited_title = st.text_input("Title", value=plan.get("title", ""))
+            st.caption(f"Template: {plan.get('template_key', '')} · {plan.get('page_count', len(plan.get('beats', [])))} pages")
+            edited_beats = []
+            for i, beat in enumerate(plan.get("beats", [])):
+                edited_beats.append(st.text_area(f"Page {i + 1}", value=beat, height=60, key=f"beat_{slug}_{i}"))
+            approved = st.form_submit_button("✅ Generate the book", use_container_width=True)
+        if st.button("🔄 Scrap this plan, start over", key=f"scrap_{slug}"):
+            st.session_state.pending_plan = None
+            st.rerun()
+        if approved:
+            changed = edited_title != plan.get("title") or edited_beats != plan.get("beats")
+            if changed:
+                pages_list = "; ".join(f"{i + 1}) {b}" for i, b in enumerate(edited_beats))
+                quick_start_text = (
+                    f"I edited the plan -- please call create_story_plan again with these "
+                    f"updated pages (same story_slug \"{slug}\"), then generate the book: "
+                    f"title \"{edited_title}\"; pages: {pages_list}."
+                )
+            else:
+                quick_start_text = "The plan looks good as-is -- please generate the book now, starting with the cover."
+            st.session_state.pending_plan = None
+
 # After at least one reply, offer to continue the same character/universe
 # into a new book -- the agent's system prompt (step 2a) knows to reuse
 # the saved character and keep it feeling like the next chapter, not an
@@ -643,5 +677,19 @@ if chat_value or quick_start_text:
             block.get("text", "") for block in last_msg.get("content", []) if isinstance(block, dict) and "text" in block
         )
         render_story(response_text)
+
+        # See agent.py step 6: the agent stops right after create_story_plan
+        # (no generate_page_image yet) so the parent can review/edit it --
+        # that turn's own trace is the source of truth for whether this just
+        # happened, not a flag the model might forget to clear.
+        plan_calls = [t for t in this_turn if t["name"] == "create_story_plan"]
+        page_calls = [t for t in this_turn if t["name"] == "generate_page_image"]
+        if plan_calls and not page_calls:
+            # story_slug only lives in the call's input (it's not part of
+            # what the tool returns); beats/page_count only in its output
+            # (capped, post-validation) -- merge both into one plan dict.
+            st.session_state.pending_plan = {**plan_calls[-1]["input"], **plan_calls[-1]["output"]}
+        elif page_calls:
+            st.session_state.pending_plan = None
 
     st.session_state.history.append(("assistant", response_text))
