@@ -4,14 +4,17 @@
 # than a real product. app.py's own CSS still hides the toolbar/footer as
 # a belt-and-suspenders (this config alone can be overridden by a viewer's
 # URL params), but this is the documented, supported way to set it.
+#
+# Deliberately NO [theme] block: an earlier version pinned base="light"
+# here, which forces Streamlit's own native chrome (the chat input's
+# outer container, alerts, etc.) to always render light -- but app.py's
+# CSS switches to dark colors via @media (prefers-color-scheme: dark)
+# whenever the viewer's OS is dark. Those two disagreeing meant a light
+# bar showing through a dark page (confirmed via a real screenshot: the
+# chat input's outer container stayed white while everything around it
+# went dark). Leaving [theme] unset lets Streamlit's own light/dark
+# choice follow the OS too, so it agrees with the CSS instead of
+# fighting it.
 [client]
 toolbarMode = "minimal"
 showSidebarNavigation = false
-
-[theme]
-base = "light"
-primaryColor = "#EE7B4F"
-backgroundColor = "#FBF5E9"
-secondaryBackgroundColor = "#FFFDF8"
-textColor = "#2E241A"
-font = "sans serif"
