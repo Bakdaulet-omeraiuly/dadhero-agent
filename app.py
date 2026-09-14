@@ -42,6 +42,7 @@ except Exception:
     CANVAS_AVAILABLE = False
 
 from dadhero import memory_backend as memory
+from dadhero import seed
 from dadhero.agent import build_agent
 from dadhero.models import ART_STYLES
 from dadhero.tools import stylize_drawing
@@ -511,6 +512,12 @@ st.markdown(
 )
 
 if "agent" not in st.session_state:
+    # Fills data/family_memory.json with a couple of polished example
+    # characters/books ONLY if it doesn't exist yet (a fresh clone, or a
+    # fresh Streamlit Cloud container -- data/ is gitignored real
+    # runtime data, so a redeploy starts with none) -- never touches it
+    # if real data is already there. See dadhero/seed.py.
+    seed.ensure_seeded()
     st.session_state.agent = build_agent()
     st.session_state.history = []
 if "story_library" not in st.session_state:
@@ -523,7 +530,12 @@ if "story_library" not in st.session_state:
     # (only title/idea/goal); the platform build's Supabase `pages`
     # table is the persisted version of this library, see
     # backend/README.md.
-    st.session_state.story_library = []
+    #
+    # Seeded with a couple of example books (dadhero/seed.py) so a new
+    # visitor's Story Library isn't empty -- runs every new session
+    # (unlike ensure_seeded() above), since this is session-only state
+    # by design; returns [] harmlessly if there's no seed file.
+    st.session_state.story_library = seed.get_seed_story_library()
 if "active_character_name" not in st.session_state:
     # Which saved character the CURRENT story is about, if any -- set at
     # the "Use {name}" button click and refreshed whenever a

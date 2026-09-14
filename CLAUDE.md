@@ -75,6 +75,25 @@ mismatch, not an enhancement. `ImageProvider.generate()` gained a
 matching `style_reference_image_path` param (optional, both providers
 handle `None` the same as before -- fully backward compatible).
 
+**Seeded example content (2026-09-14)**: `dadhero/seed.py` fills
+`data/family_memory.json`/`data/generated_pages/` with a couple of
+polished example characters/books -- but ONLY when
+`data/family_memory.json` doesn't exist yet, never overwriting real
+data. This matters because that path (and `data/generated_pages/`) is
+gitignored real runtime data -- a fresh Streamlit Cloud container (or a
+fresh local clone) starts with neither, so without seeding, a judge's
+first look at the live demo was an empty Story Universe. `data/seed/`
+itself (unlike `data/family_memory.json`/`data/generated_pages/`) IS
+committed to git -- see `.gitignore`, no change needed there since it's
+a different path entirely. Image paths inside the seed files are
+BASENAMES ONLY, resolved against the CURRENT `OUTPUT_DIR` at
+seed-apply time -- never trust an absolute path baked in on whatever
+machine generated the seed content. `app.py` calls
+`seed.ensure_seeded()` once (alongside building the agent) and
+`seed.get_seed_story_library()` every new session (the Story Library is
+session-only by design, so this runs every time, not just once;
+returns `[]` harmlessly with no seed file present).
+
 **Deliberately deferred** (stated plainly, not silently dropped): PDF/
 image-bundle export (`export_book`) -- no dependency gap (Pillow, already
 a dependency, can compose a multi-page PDF from the saved PNGs) but no
