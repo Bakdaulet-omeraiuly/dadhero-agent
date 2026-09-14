@@ -474,6 +474,43 @@ st.markdown(
 if "agent" not in st.session_state:
     st.session_state.agent = build_agent()
     st.session_state.history = []
+if "story_library" not in st.session_state:
+    # Deliberately separate from `history` -- "Start a new story" resets
+    # the chat feed/agent context for a fresh conversation, but a parent
+    # re-reading something made 10 minutes ago shouldn't lose it just
+    # because they started a different story since. Not written to disk
+    # (a page reload clears it, same as the rest of session_state) --
+    # dadhero/memory.py's saved stories don't carry page image paths
+    # (only title/idea/goal); the platform build's Supabase `pages`
+    # table is the persisted version of this library, see
+    # backend/README.md.
+    st.session_state.story_library = []
+
+if st.session_state.story_library:
+    st.markdown("##### 📚 Your Story Library")
+    st.caption("Everything made this session -- click a cover to read it again, any time.")
+    recent_first = list(reversed(st.session_state.story_library))[:8]
+    for row_start in range(0, len(recent_first), 4):
+        row = recent_first[row_start : row_start + 4]
+        cols = st.columns(len(row))
+        for col, story in zip(cols, row):
+            with col:
+                if os.path.exists(story["thumb"]):
+                    st.markdown(f'<div class="dh-gallery-card">{_img_tag(story["thumb"])}</div>', unsafe_allow_html=True)
+                st.caption(story["title"][:44])
+                if st.button("📖 Read", key=f"read_story_{story['id']}", use_container_width=True):
+                    st.session_state.reading_story_id = story["id"]
+                    st.rerun()
+
+    if st.session_state.get("reading_story_id") is not None:
+        match = next((s for s in st.session_state.story_library if s["id"] == st.session_state.reading_story_id), None)
+        if match:
+            with st.container(border=True):
+                if st.button("✕ Close", key="close_reading"):
+                    st.session_state.reading_story_id = None
+                    st.rerun()
+                render_story(match["text"])
+    st.divider()
 
 with st.sidebar:
     st.subheader("🌟 Session")
@@ -821,6 +858,23 @@ if chat_value or quick_start_text:
             st.session_state.pending_plan = {**plan_calls[-1]["input"], **plan_calls[-1]["output"]}
         elif page_calls:
             st.session_state.pending_plan = None
+
+        # A reply with real pages in it becomes a Story Library card --
+        # checked on the reply text itself (not tool_calls), so this
+        # still works if a future page/revision message adds pages to
+        # an otherwise-plan-only turn.
+        image_matches = list(_IMAGE_MD.finditer(response_text))
+        if image_matches:
+            before_first = response_text[: image_matches[0].start()].strip()
+            title_line = next((line.strip(" #*") for line in before_first.splitlines() if line.strip()), "Untitled story")
+            st.session_state.story_library.append(
+                {
+                    "id": uuid.uuid4().hex,
+                    "title": title_line or "Untitled story",
+                    "thumb": image_matches[0].group(2),
+                    "text": response_text,
+                }
+            )
 
     st.session_state.history.append(("assistant", response_text))
 
