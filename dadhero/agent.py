@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
 from strands import Agent
 from strands.models import BedrockModel
+
+load_dotenv()  # no-op if there's no .env file -- lets a local .env configure
+# DADHERO_MODEL_PROVIDER / DADHERO_IMAGE_PROVIDER / API keys without having
+# to export them in every shell.
 
 from dadhero.models import STORY_TEMPLATES
 from dadhero.tools import (

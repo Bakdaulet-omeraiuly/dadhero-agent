@@ -31,43 +31,67 @@ TEXT description, never an upload. `dadhero/agent.py`'s system prompt makes
 this an explicit, non-negotiable rule: decline a photo if one is offered,
 ask for a text description instead, regardless of who the character is.
 
-## ⚠️ Status: image generation is the one unverified piece
+## ✅ Status: real image generation is verified and working
 
-Three separate infrastructure walls were hit building this, in order:
+**Update:** after resolving a Google Cloud API-key/billing chain (three
+separate keys hit three separate walls -- org policy, a project the
+account didn't administer, and depleted prepay credit, in that order --
+before one finally worked), `GeminiImageProvider` produced real,
+consistent, publication-quality art. Two independent test stories confirm
+it:
 
-1. **AWS Bedrock** -- payment instrument fixed, then blocked by standard
-   post-payment account verification (quota held at 0). Same account used
-   for the StoryMatch project; see that repo's README for the full
-   timeline. Still pending as of this writing.
-2. **First Gemini API key** -- rejected with `API Keys are Disallowed:
-   Your organization's security policy disallows API keys. Please use
-   Application Default Credentials (ADC) instead.` The Google Cloud
-   project behind this key is under an org policy (likely a
-   Workspace/enterprise identity) that blocks API-key auth entirely.
-3. **Second Gemini API key** -- a different project; blocked on two
-   independent things: `generativelanguage.googleapis.com` requests
-   flagged as "blocked" (a key-level API restriction), and the Generative
-   Language API not enabled on that project at all
-   (`console.developers.google.com/apis/api/generativelanguage.googleapis.com`).
+<p float="left">
+  <img src="docs/demo/example_page1.png" width="270" alt="Page 1: Papa Nurlan discovers a crying baby star" />
+  <img src="docs/demo/example_page2.png" width="270" alt="Page 2: Papa Nurlan reaches for the baby star" />
+  <img src="docs/demo/example_page3.png" width="270" alt="Page 3: Papa Nurlan reunites the star with its family" />
+</p>
 
-**None of this blocked the build.** `dadhero/image_providers.py` defines a
-provider interface with a `MockImageProvider` that draws a real, labeled
-placeholder PNG locally (no network, no cost) -- the entire agent loop
-(character bible -> story plan -> per-page generation, chaining a
-reference image forward for consistency -> feedback -> single-page
-regeneration -> family memory) was built and verified end-to-end against a
-live model using it.
+Same face, hair, glasses, and suit design across all three pages,
+generated from **one locked character description**, each page
+conditioned on page 1's image via `reference_image_path` -- nothing here
+is hand-picked or touched up. (Gemini also spontaneously added a
+"DAD-STRONAUT" name badge and a Kazakhstan flag patch on the suit,
+unprompted -- consistent across all three pages too.) A second story (a
+gardener rescuing a lost bunny) confirmed this wasn't a one-off: braid,
+scarf, and apron stayed consistent across its pages as well.
 
-`GeminiImageProvider` (Nano Banana / `gemini-3-pro-image`, chosen
-specifically for its reference-image character consistency) uses the
-official `google-genai` SDK, and its call/response shape IS confirmed live:
-a text call through the same SDK succeeds, and an image call reaches the
-model and returns a clean, expected `429 RESOURCE_EXHAUSTED` (free tier =
-0 quota for image models until billing is enabled) -- not a parsing or
-shape error. What's still unverified is the actual generated image
-quality and multi-turn character consistency, since no account with image
-billing enabled was available during development. See "Before the real
-demo" below for the exact two-image test to run once that's unblocked.
+Set `DADHERO_IMAGE_PROVIDER=gemini` with a working `GEMINI_API_KEY` (see
+"Getting a working Gemini key" below -- it took three attempts to find a
+key/project combination without an infrastructure wall) to reproduce this.
+`MockImageProvider` remains the zero-cost default so a fresh checkout with
+no API key still runs the full pipeline end-to-end.
+
+### Getting a working Gemini key (learned the hard way)
+
+Not every Google account/project combination works. In order, what
+actually blocked each attempt:
+
+1. A key from an org-managed Google Workspace project: `API Keys are
+   Disallowed -- Your organization's security policy disallows API keys.`
+   -- not fixable by the account holder; the org admin disabled key auth
+   entirely.
+2. A key from a project the account didn't administer: Google Cloud
+   Console's "Enable API" page showed `You need additional access to the
+   project` (`resourcemanager.projects.get` missing) -- not this
+   account's project to configure.
+3. A key from the account's own default **"My First Project"**: worked for
+   auth, but `Your prepayment credits are depleted` -- fixed by adding
+   credit at https://aistudio.google.com/apikey (NOT the old-style
+   `AIzaSy...` key from the Cloud Console credentials wizard -- the working
+   key came from AI Studio's own "Create API key" flow, format
+   `AQ.Ab8R...`).
+
+Takeaway: use a personal (non-Workspace) Google account, generate the key
+directly from **aistudio.google.com/apikey** (not the Cloud Console
+credentials wizard), and make sure that project's prepay credit isn't at
+zero.
+
+**AWS Bedrock**, separately, is still blocked as of this writing: payment
+instrument fixed, then held at a standard post-payment account
+verification quota of 0. `DADHERO_MODEL_PROVIDER` defaults to `anthropic`
+for this reason -- see StoryMatch's README for the full Bedrock timeline
+(same AWS account). Bedrock remains the documented path back for the
+actual submission once verification clears.
 
 ## Why Gemini "Nano Banana" over Bedrock's image models for this specific job
 
@@ -189,43 +213,27 @@ cp .env.example .env   # edit as needed
 
 ## Run
 
+`dadhero/agent.py` auto-loads a `.env` file (via `python-dotenv`) if one
+exists, so set your real values there once instead of exporting them every
+shell session:
+
 ```bash
 source .venv/bin/activate
 
-# Web demo (mock images, no API key needed)
+# Web demo -- reads provider/keys from .env if present
 streamlit run app.py
 
 # Terminal demo
 python cli_demo.py                # interactive
-python cli_demo.py --scripted     # unattended, matches the transcript above
+python cli_demo.py --scripted     # unattended, matches the transcripts above
 
-# Once Gemini access is confirmed working:
+# Or override per-invocation without touching .env:
 DADHERO_IMAGE_PROVIDER=gemini GEMINI_API_KEY=... streamlit run app.py
-
-# Local dev without waiting on AWS Bedrock:
 DADHERO_MODEL_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... streamlit run app.py
 ```
 
 Reset family memory / generated images between demo runs:
 `rm -rf data/family_memory.json data/generated_pages`
-
-## Before the real demo: verify GeminiImageProvider against a live response
-
-1. Fix whichever of the three blockers above resolves first (Bedrock
-   verification clearing, or a Gemini project with billing enabled, API-key
-   auth allowed, and the Generative Language API enabled).
-2. Generate ONE image standalone and inspect it:
-   ```python
-   from dadhero.image_providers import GeminiImageProvider
-   p = GeminiImageProvider()
-   result = p.generate("A friendly cartoon dad astronaut, flat illustration style", output_name="test1")
-   print(result)  # open result.path
-   ```
-3. Generate a second image passing `reference_image_path=result.path` with
-   a different scene, and actually look at both side by side -- confirm
-   the character looks like the same person before trusting this in a live
-   demo. The request/response plumbing is already confirmed correct (see
-   Status above); this step is purely about judging real output quality.
 
 ## What's deliberately not built (cut for time)
 
