@@ -486,6 +486,41 @@ if "story_library" not in st.session_state:
     # backend/README.md.
     st.session_state.story_library = []
 
+quick_start_text: str | None = None
+
+# Characters persist for real (dadhero/memory.py writes to
+# data/family_memory.json), unlike story_library above -- a returning
+# visitor should see their roster and jump straight into using one
+# without hunting through the sidebar's "Story Universe" accordion or
+# retyping a description the agent already has saved.
+_studio_characters = memory.get_family_profile("default_family").get("characters", {})
+if _studio_characters:
+    st.markdown("##### 🎭 Your Characters")
+    st.caption("Saved across visits -- pick one to star in a new story.")
+    names = list(_studio_characters.keys())
+    for row_start in range(0, len(names), 4):
+        row_names = names[row_start : row_start + 4]
+        cols = st.columns(len(row_names))
+        for col, name in zip(cols, row_names):
+            bible = _studio_characters[name]
+            with col:
+                ref = bible.get("reference_image_path")
+                if ref and os.path.exists(ref):
+                    st.markdown(f'<div class="dh-gallery-card">{_img_tag(ref)}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        '<div class="dh-gallery-card" style="display:flex;align-items:center;'
+                        'justify-content:center;aspect-ratio:1;font-size:40px;">🧑‍🎨</div>',
+                        unsafe_allow_html=True,
+                    )
+                subtitle = bible.get("relationship", "")
+                if bible.get("role_in_story"):
+                    subtitle += f" · {bible['role_in_story']}"
+                st.caption(f"**{name}**  \n{subtitle}")
+                if st.button(f"✨ Use {name}", key=f"use_char_{name}", use_container_width=True):
+                    quick_start_text = f"Use my saved character {name} for a new story."
+    st.divider()
+
 if st.session_state.story_library:
     st.markdown("##### 📚 Your Story Library")
     st.caption("Everything made this session -- click a cover to read it again, any time.")
@@ -623,8 +658,6 @@ _QUICK_PROMPTS = [
     ("🦷", "A real milestone", "My son lost his first tooth today! Turn it into a fun adventure."),
     ("🤝", "Teach a lesson", "Teach my daughter about sharing through a short, warm bedtime story."),
 ]
-
-quick_start_text: str | None = None
 
 # Show the page "at rest" with real generated proof instead of a blank
 # chat -- a first-time visitor sees what this actually makes before
