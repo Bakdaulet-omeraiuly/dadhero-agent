@@ -1,0 +1,58 @@
+{
+  "default_family": {
+    "characters": {
+      "Jake": {
+        "character_name": "Jake",
+        "relationship": "son",
+        "appearance": "8-year-old boy with short sandy-blond hair, bright blue eyes, wearing a red baseball cap worn forwards",
+        "personality_traits": [
+          "brave",
+          "resourceful",
+          "determined"
+        ],
+        "role_in_story": "",
+        "art_style": "warm, flat-color children's storybook illustration; soft rounded shapes; simple clean background; gentle warm lighting; no photorealism",
+        "prompt_fragment": "Jake (the child's son): 8-year-old boy with short sandy-blond hair, bright blue eyes, wearing a red baseball cap worn forwards. Personality comes through as brave, resourceful, determined. Art style: warm, flat-color children's storybook illustration; soft rounded shapes; simple clean background; gentle warm lighting; no photorealism.",
+        "reference_image_path": "treehouse_rescue_page8.png"
+      },
+      "Emma": {
+        "character_name": "Emma",
+        "relationship": "daughter",
+        "appearance": "9-year-old girl with curly bright red hair tied in two high pigtails, a scatter of freckles across her nose, wearing a bright yellow raincoat over blue jeans and brown rain boots, curious expression.",
+        "personality_traits": [
+          "curious",
+          "adventurous",
+          "smart"
+        ],
+        "role_in_story": "",
+        "art_style": "warm, flat-color children's storybook illustration; soft rounded shapes; simple clean background; gentle warm lighting; no photorealism",
+        "prompt_fragment": "Emma (the child's daughter): 9-year-old girl with curly bright red hair tied in two high pigtails, a scatter of freckles across her nose, wearing a bright yellow raincoat over blue jeans and brown rain boots, curious expression.. Personality comes through as curious, adventurous, smart. Art style: warm, flat-color children's storybook illustration; soft rounded shapes; simple clean background; gentle warm lighting; no photorealism.",
+        "reference_image_path": "lighthouse_mystery_page13.png"
+      }
+    },
+    "places": {
+      "Grandpa's Oak Treehouse": "A tall sturdy oak tree beside a gentle meandering creek, featuring a wooden treehouse with a rope ladder and a scenic branch platform.",
+      "Rocky Point Lighthouse": "A tall classic white-and-red striped lighthouse perched atop rocky sea cliffs with a glowing glass lantern room, overlooking a stormy blue ocean coastline and sandy cove."
+    },
+    "stories": [
+      {
+        "title": "The Great Treehouse Rescue",
+        "idea": "Jake, Lily, Biscuit, and Grandpa Joe rebuild their storm-damaged treehouse better than before",
+        "template": "problem_helper_solution",
+        "goal": "teamwork and resilience"
+      },
+      {
+        "title": "Emma and the Mystery of Rocky Point Lighthouse",
+        "idea": "Emma, Sam, Whiskers, and Captain Ruby solve the mystery of the flickering lighthouse beam",
+        "template": "small_adventure",
+        "goal": "curiosity and problem solving"
+      }
+    ],
+    "memories": [],
+    "lessons_taught": [
+      "teamwork and resilience",
+      "curiosity and problem solving"
+    ],
+    "progress": []
+  }
+}
